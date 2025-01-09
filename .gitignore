@@ -169,3 +169,30 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+.cursorrules
+
+requirements.md
+
+# macOS / Windows / Linux system files
+.DS_Store Thumbs.db
+
+# General
+*.log .env .local .venv/ venv/ .env. .secret.
+
+# Python
+pycache/ *.pyc
+
+# Flutter / Dart
+build artifacts
+build/ dart_tool/ .ios/ .android/ .packages .pub-cache/ .flutter-plugins .flutter-plugins-dependencies .melody.yaml pubspec.lock
+
+# Firebase
+firebase-debug.log serviceAccountKey.json firebase_service_account.json
+
+# credentials
+backend/credentials/*.json
+
+# Docker
+docker-compose.override.yml *.pid
+
