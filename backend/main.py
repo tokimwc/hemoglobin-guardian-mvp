@@ -54,19 +54,38 @@ async def analyze_image(
         contents = await file.read()
         
         # Vision AIで画像解析
-        risk_score = await vision_service.analyze_image(contents)
+        analysis = await vision_service.analyze_image(contents)
         
-        # リスクレベルの判定
-        risk_level = _calculate_risk_level(risk_score)
+        # 信頼度が低い場合は警告を追加
+        warnings = []
+        if analysis.confidence_score < 0.5:
+            if analysis.quality_metrics.is_blurry:
+                warnings.append("画像がブレています")
+            if not analysis.quality_metrics.has_proper_lighting:
+                warnings.append("照明条件が適切ではありません")
+            if not analysis.quality_metrics.has_detected_nail:
+                warnings.append("爪が正しく検出できませんでした")
         
         # Gemini APIでアドバイス生成
-        advice = await gemini_service.generate_advice(risk_level)
+        advice = await gemini_service.generate_advice(
+            risk_level=_calculate_risk_level(analysis.risk_score),
+            confidence_score=analysis.confidence_score,
+            warnings=warnings
+        )
         
         # 解析結果の作成
         result = AnalysisResult(
-            risk_score=risk_score,
-            risk_level=risk_level,
+            risk_score=analysis.risk_score,
+            risk_level=_calculate_risk_level(analysis.risk_score),
             advice=advice,
+            confidence_score=analysis.confidence_score,
+            warnings=warnings,
+            quality_metrics={
+                "is_blurry": analysis.quality_metrics.is_blurry,
+                "brightness_score": analysis.quality_metrics.brightness_score,
+                "has_proper_lighting": analysis.quality_metrics.has_proper_lighting,
+                "has_detected_nail": analysis.quality_metrics.has_detected_nail
+            },
             created_at=datetime.now()
         )
         
