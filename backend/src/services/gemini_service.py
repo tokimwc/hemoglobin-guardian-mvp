@@ -1,14 +1,17 @@
 from google.cloud import aiplatform
 from typing import Optional
 import json
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 class GeminiService:
     def __init__(self):
         self.client = aiplatform.gapic.PredictionServiceClient(
             client_options={"api_endpoint": "asia-northeast1-aiplatform.googleapis.com"}
         )
+        self._executor = ThreadPoolExecutor()
         
-    def generate_advice(self, risk_level: str) -> str:
+    async def generate_advice(self, risk_level: str) -> str:
         """
         リスクレベルに応じた栄養アドバイスを生成
         
@@ -22,8 +25,13 @@ class GeminiService:
         prompt = self._create_prompt(risk_level)
         
         try:
-            # Gemini APIを呼び出してアドバイスを生成
-            response = self._call_gemini_api(prompt)
+            # Gemini APIを非同期で呼び出してアドバイスを生成
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                self._executor,
+                self._call_gemini_api,
+                prompt
+            )
             return self._format_response(response)
         except Exception as e:
             return f"申し訳ありません。アドバイス生成中にエラーが発生しました: {str(e)}"

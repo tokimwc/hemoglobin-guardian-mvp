@@ -1,13 +1,15 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from firebase_admin import credentials, initialize_app
-from typing import Optional
+from typing import Optional, List
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 from src.services.vision_service import VisionService
 from src.services.gemini_service import GeminiService
 from src.services.firestore_service import FirestoreService
+from src.models.analysis import AnalysisResult, AnalysisHistory
 
 # 環境変数の読み込み
 load_dotenv()
@@ -42,39 +44,41 @@ async def health_check():
     return {"status": "healthy", "version": "1.0.0"}
 
 # 画像解析エンドポイント
-@app.post("/analyze")
+@app.post("/analyze", response_model=AnalysisResult)
 async def analyze_image(
     file: UploadFile = File(...),
-    user_id: str = None
+    user_id: Optional[str] = None
 ):
     try:
         # 画像をバイト形式で読み込み
         contents = await file.read()
         
         # Vision AIで画像解析
-        risk_score = vision_service.analyze_image(contents)
+        risk_score = await vision_service.analyze_image(contents)
         
         # リスクレベルの判定
         risk_level = _calculate_risk_level(risk_score)
         
         # Gemini APIでアドバイス生成
-        advice = gemini_service.generate_advice(risk_level)
+        advice = await gemini_service.generate_advice(risk_level)
+        
+        # 解析結果の作成
+        result = AnalysisResult(
+            risk_score=risk_score,
+            risk_level=risk_level,
+            advice=advice,
+            created_at=datetime.now()
+        )
         
         # Firestoreに結果を保存（ユーザーIDがある場合のみ）
         if user_id:
-            doc_id = firestore_service.save_analysis_result(
+            await firestore_service.save_analysis_result(
                 user_id=user_id,
-                risk_score=risk_score,
-                risk_level=risk_level,
-                advice=advice
+                analysis_result=result
             )
         
-        # 結果を返却
-        return {
-            "risk_score": risk_score,
-            "risk_level": risk_level,
-            "advice": advice
-        }
+        return result
+        
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -82,11 +86,11 @@ async def analyze_image(
         )
 
 # 解析履歴取得エンドポイント
-@app.get("/history/{user_id}")
+@app.get("/history/{user_id}", response_model=List[AnalysisHistory])
 async def get_history(user_id: str, limit: int = 10):
     try:
-        history = firestore_service.get_user_history(user_id, limit)
-        return {"history": history}
+        history = await firestore_service.get_user_history(user_id, limit)
+        return history
     except Exception as e:
         raise HTTPException(
             status_code=500,
