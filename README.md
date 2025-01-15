@@ -23,6 +23,14 @@ hemoglobin-guardian-mvp/
 ├── frontend/
 │   ├── pubspec.yaml
 │   └── lib/
+│       ├── main.dart
+│       └── src/
+│           ├── components/
+│           │   ├── camera/     # カメラ・画像選択UI
+│           │   └── analysis/   # 解析結果表示UI
+│           ├── models/         # データモデル
+│           ├── providers/      # 状態管理
+│           └── services/       # APIクライアント
 ├── firebase/
 │   ├── firebase.json
 │   └── firestore.rules
@@ -68,11 +76,31 @@ hemoglobin-guardian-mvp/
 1. [Flutter SDK](https://docs.flutter.dev/get-started/install) をインストール
 2. frontend ディレクトリへ移動
    ```bash
-   cd ../frontend
+   cd frontend
    flutter pub get
+   ```
+3. Freezedのコード生成
+   ```bash
+   dart run build_runner build
+   ```
+4. アプリケーションの実行
+   ```bash
+   # Windowsの場合
+   flutter run -d windows
+   
+   # Android/iOSの場合
    flutter run
    ```
-   - AndroidエミュレータやiOSシミュレータ、ブラウザ上でアプリを確認
+
+#### フロントエンド実装状況
+- [x] カメラ/ギャラリーからの画像選択
+- [x] 画像プレビュー表示
+- [x] 解析画面への遷移
+- [x] APIクライアントの基本実装
+- [x] 解析結果表示UI
+- [ ] ユーザー認証
+- [ ] 履歴表示
+- [ ] 設定画面
 
 ### 5. デプロイ (Cloud Run)
 1. Dockerfile を用いてコンテナイメージをビルド & Container Registryへプッシュ
