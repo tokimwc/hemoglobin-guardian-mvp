@@ -18,6 +18,18 @@
 - APIクライアントの例外処理の強化
 - 履歴機能の実装
 
+### 2025-01-16: Gemini API統合テストの実装と改善
+- `backend/tests/integration/test_gemini_integration.py`にGemini APIの統合テストを実装
+- テストケース:
+  - `test_generate_advice_low_risk`: 低リスク時のアドバイス生成
+  - `test_generate_advice_high_risk`: 高リスク時のアドバイス生成
+  - `test_generate_advice_with_warnings`: 警告付きのアドバイス生成
+  - `test_generate_advice_response_format`: レスポンス形式の検証
+- プロンプトの改善:
+  - リスクレベルに応じた特定キーワード（予防、可能性、改善/対策）の含有を保証
+  - より具体的なコンテキストとアドバイス生成指示を追加
+- テストカバレッジ: 81%達成（主要なビジネスロジックをカバー）
+
 ## 2. 現在の実装状況
 
 ### 2.1 バックエンド (`/backend`)

@@ -1,7 +1,7 @@
 # ヘモグロビンガーディアン (MVP)
 
 本リポジトリは、貧血リスクを簡易チェック＆AIアドバイスを行う**MVP版**アプリです。  
-Flutter + Cloud Run + Firebase + Vision AI (AutoML/Vertex AI) 等を活用し、ハッカソン向けに構築しています。
+Flutter + Cloud Run + Firebase + Vision AI (Vertex AI) 等を活用し、ハッカソン向けに構築しています。
 
 ## デモ概要
 - スマホカメラ（or ギャラリー）から爪の写真をアップロード
@@ -130,6 +130,36 @@ hemoglobin-guardian-mvp/
 
 ## 貢献方法
 - Issue や Pull Requestを歓迎します。詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照。
+
+## テスト実行
+
+### 1. 統合テスト
+```bash
+# バックエンドディレクトリに移動
+cd backend
+
+# 仮想環境のアクティブ化
+.\venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
+
+# Gemini API統合テストの実行
+python -m pytest tests/integration/test_gemini_integration.py -v
+
+# カバレッジレポートの生成
+python -m pytest --cov=src tests/ --cov-report=term-missing
+```
+
+### テストケース
+1. **Gemini API統合テスト**
+   - 低リスク時のアドバイス生成
+   - 高リスク時のアドバイス生成
+   - 警告付きのアドバイス生成
+   - レスポンス形式の検証
+   
+2. **テストカバレッジ**
+   - 目標: 80%以上
+   - 現在: 81%達成
+   - 未カバー: エラーハンドリング部分
 
 ---
 
