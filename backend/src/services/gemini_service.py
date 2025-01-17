@@ -1,5 +1,5 @@
 from google.cloud import aiplatform
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 import json
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -28,23 +28,26 @@ class CacheKey:
         warnings_hash = hashlib.md5(warnings_str.encode()).hexdigest()
         return cls(risk_level=risk_level, warnings_hash=warnings_hash)
 
-@dataclass(frozen=True)
-class ErrorResponse:
+@dataclass
+class BaseResponse:
+    """レスポンスの基底クラス"""
     summary: str
-    warnings: List[str]
     iron_rich_foods: List[str]
     meal_suggestions: List[str]
     lifestyle_tips: List[str]
+    warnings: List[str]
     timestamp: float = time.time()
+    cached: bool = False
 
 @dataclass
-class NutritionAdvice:
-    summary: str
-    iron_rich_foods: List[str]
-    meal_suggestions: List[str]
-    lifestyle_tips: List[str]
-    warnings: List[str]
-    cached: bool = False
+class NutritionAdvice(BaseResponse):
+    """栄養アドバイスのレスポンスクラス"""
+    pass
+
+@dataclass
+class ErrorResponse(BaseResponse):
+    """エラー時のレスポンスクラス"""
+    error_type: str = "SYSTEM_ERROR"
 
 class GeminiService:
     def __init__(self):
@@ -127,7 +130,12 @@ class GeminiService:
         except Exception as e:
             raise Exception(f"Gemini API call failed: {str(e)}")
 
-    async def generate_advice(self, risk_level: str, confidence_score: float, warnings: List[str]) -> NutritionAdvice:
+    async def generate_advice(
+        self,
+        risk_level: str,
+        confidence_score: float,
+        warnings: List[str]
+    ) -> Union[NutritionAdvice, ErrorResponse]:
         """アドバイスを生成（キャッシュがある場合はそれを使用）"""
         try:
             # 入力値の検証
@@ -147,7 +155,11 @@ class GeminiService:
                 cached_advice = self._advice_cache[cache_key]
                 if time.time() - cached_advice.timestamp < self._cache_ttl:
                     return NutritionAdvice(
-                        **{k: v for k, v in cached_advice.__dict__.items() if k != 'timestamp'},
+                        summary=cached_advice.summary,
+                        iron_rich_foods=cached_advice.iron_rich_foods,
+                        meal_suggestions=cached_advice.meal_suggestions,
+                        lifestyle_tips=cached_advice.lifestyle_tips,
+                        warnings=cached_advice.warnings,
                         cached=True
                     )
 
@@ -159,7 +171,6 @@ class GeminiService:
             
             # キャッシュに保存
             if isinstance(advice, NutritionAdvice):  # エラーレスポンスでない場合のみキャッシュ
-                advice.timestamp = time.time()
                 self._advice_cache[cache_key] = advice
             
             return advice
@@ -177,7 +188,7 @@ class GeminiService:
     def _create_error_response_data(self, error_type: str = "SYSTEM_ERROR") -> ErrorResponse:
         """エラーレスポンスのデータを生成（同期メソッド）"""
         return ErrorResponse(
-            summary="申し訳ありません。システムエラーが発生しました。一時的な問題の可能性があります。",
+            summary="システムエラーが発生しました。一時的な問題の可能性があります。",
             warnings=[f"エラーが発生しました: {error_type}"],
             iron_rich_foods=[
                 "レバー（豚、鶏、牛）",
@@ -193,7 +204,8 @@ class GeminiService:
                 "定期的な運動を心がけましょう",
                 "十分な睡眠を取りましょう",
                 "医師に相談することをお勧めします"
-            ]
+            ],
+            error_type=error_type
         )
 
     async def _create_error_response(self, error_type: str = "SYSTEM_ERROR") -> ErrorResponse:
@@ -204,11 +216,17 @@ class GeminiService:
         """タイムアウト時のエラーレスポンスを生成"""
         return self._create_error_response_data("TIMEOUT_ERROR: 応答時間が制限を超えました")
 
-    async def _generate_advice_internal(self, risk_level: str, confidence_score: float, warnings: List[str]):
-        # プロンプトの構築
-        prompt = self._create_prompt(risk_level, confidence_score, warnings)
-        
+    async def _generate_advice_internal(
+        self,
+        risk_level: str,
+        confidence_score: float,
+        warnings: List[str]
+    ) -> Union[NutritionAdvice, ErrorResponse]:
+        """アドバイスを内部的に生成"""
         try:
+            # プロンプトの構築
+            prompt = self._create_prompt(risk_level, confidence_score, warnings)
+            
             # Gemini APIを非同期で呼び出してアドバイスを生成
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
@@ -216,10 +234,23 @@ class GeminiService:
                 self._call_gemini_api,
                 prompt
             )
-            return self._format_response(response, risk_level, warnings)
+            
+            # レスポンスをパース
+            try:
+                data = json.loads(response)
+                return NutritionAdvice(
+                    summary=data["summary"],
+                    iron_rich_foods=data["iron_rich_foods"],
+                    meal_suggestions=data["meal_suggestions"],
+                    lifestyle_tips=data["lifestyle_tips"],
+                    warnings=warnings
+                )
+            except json.JSONDecodeError as e:
+                return await self._create_error_response(f"JSONDecodeError: {str(e)}")
+            except KeyError as e:
+                return await self._create_error_response(f"KeyError: {str(e)}")
         except Exception as e:
-            # エラー時のフォールバック
-            return self._get_fallback_advice(risk_level, str(e))
+            return await self._create_error_response(str(e))
 
     def _create_prompt(
         self,
@@ -253,150 +284,15 @@ class GeminiService:
         4. 日本の食文化との親和性
            - 和食中心のメニュー
            - 日常的に取り入れやすい食材
-
-        重要: リスクレベルに応じて、以下のキーワードを必ずsummaryに含めてください：
-        - LOWの場合：「予防」というキーワードを含める
-        - MEDIUMの場合：「可能性」というキーワードを含める
-        - HIGHの場合：「改善」または「対策」というキーワードを含める
         """
         
-        risk_contexts = {
-            "LOW": """
-            貧血リスクは低めです（LOW）。
-            予防的な観点から、以下の点を考慮したアドバイスを提供してください：
-            - 現状維持のための具体的な食事プラン
-            - 手軽に継続できる予防的な習慣
-            - 鉄分を日常的に補給できる食材選び
-            """,
-            "MEDIUM": """
-            貧血リスクは中程度です（MEDIUM）。
-            貧血の可能性を考慮し、以下の点を重視したアドバイスを提供してください：
-            - 鉄分摂取を増やすための具体的な食事改善案
-            - 1週間の食事プランの例
-            - 生活習慣の見直しポイント
-            """,
-            "HIGH": """
-            貧血リスクは高めです（HIGH）。
-            早急な改善が必要です。以下の点を含む具体的なアドバイスを提供してください：
-            - すぐに実践できる食事の改善対策
-            - 鉄分を効率的に摂取できる食材と調理法
-            - 医師への相談を推奨する具体的な症状の説明
-            """
-        }
+        risk_text = {
+            "LOW": f"貧血リスクは低めです（{risk_level}）",
+            "MEDIUM": f"貧血リスクは中程度です（{risk_level}）",
+            "HIGH": f"貧血リスクは高めです（{risk_level}）"
+        }.get(risk_level, f"貧血リスクは中程度です（MEDIUM）")
         
-        confidence_context = f"\n解析の信頼度は{confidence_score:.0%}です。"
-        warnings_context = "\n".join([f"注意: {w}" for w in warnings]) if warnings else ""
+        confidence_text = f"（信頼度: {int(confidence_score * 100)}%）"
+        warnings_text = "注意事項:\n" + "\n".join(warnings) if warnings else ""
         
-        return f"{base_context}\n{risk_contexts.get(risk_level, risk_contexts['MEDIUM'])}{confidence_context}\n{warnings_context}"
-
-    def _format_response(
-        self,
-        response: str,
-        risk_level: str,
-        warnings: List[str]
-    ) -> NutritionAdvice:
-        """APIレスポンスを整形"""
-        try:
-            data = json.loads(response)
-            # 既存の警告に新しい警告を追加
-            all_warnings = warnings.copy()
-            return NutritionAdvice(
-                summary=data["summary"],
-                iron_rich_foods=data["iron_rich_foods"],
-                meal_suggestions=data["meal_suggestions"],
-                lifestyle_tips=data["lifestyle_tips"],
-                warnings=all_warnings
-            )
-        except json.JSONDecodeError as e:
-            return self._get_fallback_advice(risk_level, f"JSONDecodeError: レスポンスの解析に失敗しました - {str(e)}", warnings)
-        except KeyError as e:
-            return self._get_fallback_advice(risk_level, f"KeyError: 必要なキー {str(e)} が見つかりません", warnings)
-
-    def _get_fallback_advice(self, risk_level: str, error: str, warnings: List[str] = None) -> NutritionAdvice:
-        """エラー時のフォールバックアドバイス"""
-        all_warnings = warnings.copy() if warnings else []
-        all_warnings.append(f"アドバイス生成エラー: {error}")
-        
-        # リスクレベルに応じたフォールバックメッセージ
-        risk_messages = {
-            "LOW": {
-                "summary": "貧血の予防のため、日々の食事で鉄分を意識的に摂取することをお勧めします。システムエラーが発生しましたが、一般的な予防アドバイスをご提供します。",
-                "iron_rich_foods": [
-                    "ほうれん草（和食の定番）",
-                    "レバー（豚、鶏、牛）",
-                    "牡蠣（生食や加熱）",
-                    "大豆製品（納豆、豆腐）",
-                    "ひじき（乾物）"
-                ],
-                "meal_suggestions": [
-                    "ほうれん草と油揚げの煮浸し",
-                    "レバニラ炒め",
-                    "ひじきの煮物"
-                ],
-                "lifestyle_tips": [
-                    "毎食、野菜を1/3程度取り入れましょう",
-                    "ビタミンCを含む果物を食後に摂取すると鉄分の吸収が良くなります",
-                    "定期的な運動で血行を促進しましょう"
-                ]
-            },
-            "MEDIUM": {
-                "summary": "貧血の可能性があるため、積極的な鉄分摂取をお勧めします。システムエラーが発生しましたが、一般的な改善アドバイスをご提供します。",
-                "iron_rich_foods": [
-                    "レバー（鉄分が特に豊富）",
-                    "赤身肉（牛肉、豚肉）",
-                    "ほうれん草（和食に取り入れやすい）",
-                    "小松菜（手に入りやすい）",
-                    "納豆（毎日の食事に）",
-                    "あさり（味噌汁の具に）"
-                ],
-                "meal_suggestions": [
-                    "レバーの甘辛炒め（ビタミンC野菜を添えて）",
-                    "小松菜と油揚げの煮浸し",
-                    "あさりの味噌汁と納豆ご飯",
-                    "牛肉と青菜の炒め物"
-                ],
-                "lifestyle_tips": [
-                    "鉄分の多い食材を毎食1品以上取り入れましょう",
-                    "コーヒーや緑茶は食事の30分以上前後を空けて飲みましょう",
-                    "十分な睡眠を取り、ストレスを軽減しましょう",
-                    "定期的な血液検査をお勧めします"
-                ]
-            },
-            "HIGH": {
-                "summary": "貧血リスクが高いため、早急な対策が必要です。システムエラーが発生しましたが、重要な改善アドバイスをご提供します。医師への相談も推奨します。",
-                "iron_rich_foods": [
-                    "レバー（豚、鶏、牛：鉄分が極めて豊富）",
-                    "牡蠣（生食や加熱調理）",
-                    "赤身肉（牛肉が特におすすめ）",
-                    "ほうれん草（毎日の食事に）",
-                    "小松菜（手に入りやすい）",
-                    "ひじき（乾物で常備に）",
-                    "あさり（味噌汁やパスタに）"
-                ],
-                "meal_suggestions": [
-                    "レバーの生姜焼き（ビタミンC野菜を多めに）",
-                    "牡蠣と小松菜の炒め物",
-                    "ひじきと大豆の煮物",
-                    "牛肉とほうれん草のソテー",
-                    "あさりと青菜の和風パスタ"
-                ],
-                "lifestyle_tips": [
-                    "できるだけ早めに医師に相談することをお勧めします",
-                    "鉄分サプリメントの使用を医師に相談してみましょう",
-                    "毎食、鉄分の多い食材を必ず取り入れましょう",
-                    "ビタミンCを含む食材と組み合わせて摂取しましょう",
-                    "十分な休息を取り、無理な運動は控えめにしましょう"
-                ]
-            }
-        }
-        
-        # デフォルトはMEDIUMのメッセージを使用
-        fallback = risk_messages.get(risk_level, risk_messages["MEDIUM"])
-        
-        return NutritionAdvice(
-            summary=fallback["summary"],
-            iron_rich_foods=fallback["iron_rich_foods"],
-            meal_suggestions=fallback["meal_suggestions"],
-            lifestyle_tips=fallback["lifestyle_tips"],
-            warnings=all_warnings
-        ) 
+        return f"{base_context}\n\n状況:\n{risk_text}{confidence_text}\n{warnings_text}" 
