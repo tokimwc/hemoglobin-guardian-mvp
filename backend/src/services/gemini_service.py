@@ -8,9 +8,34 @@ import vertexai
 from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
 import os
 from dotenv import load_dotenv
+from functools import lru_cache
+import time
+import hashlib
 
 # 環境変数の読み込み
 load_dotenv()
+
+@dataclass(frozen=True)
+class CacheKey:
+    """キャッシュのキーとして使用するデータクラス"""
+    risk_level: str
+    warnings_hash: str
+    
+    @classmethod
+    def create(cls, risk_level: str, warnings: List[str]) -> 'CacheKey':
+        """警告リストのハッシュ値を含むキーを生成"""
+        warnings_str = ','.join(sorted(warnings)) if warnings else ''
+        warnings_hash = hashlib.md5(warnings_str.encode()).hexdigest()
+        return cls(risk_level=risk_level, warnings_hash=warnings_hash)
+
+@dataclass(frozen=True)
+class ErrorResponse:
+    summary: str
+    warnings: List[str]
+    iron_rich_foods: List[str]
+    meal_suggestions: List[str]
+    lifestyle_tips: List[str]
+    timestamp: float = time.time()
 
 @dataclass
 class NutritionAdvice:
@@ -19,6 +44,7 @@ class NutritionAdvice:
     meal_suggestions: List[str]
     lifestyle_tips: List[str]
     warnings: List[str]
+    cached: bool = False
 
 class GeminiService:
     def __init__(self):
@@ -40,6 +66,25 @@ class GeminiService:
         self.max_tokens = int(os.getenv("GEMINI_MAX_TOKENS", "1024"))
         self.top_p = float(os.getenv("GEMINI_TOP_P", "0.8"))
         self.top_k = int(os.getenv("GEMINI_TOP_K", "40"))
+        
+        # キャッシュとタイムアウトの設定
+        self._advice_cache: Dict[CacheKey, NutritionAdvice] = {}
+        self._error_cache = {}
+        self._timeout_seconds = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "4.0"))
+        self._cache_ttl = int(os.getenv("ADVICE_CACHE_TTL_SECONDS", "3600"))  # 1時間
+        self._last_cache_cleanup = time.time()
+
+    def _cleanup_cache(self):
+        """期限切れのキャッシュエントリを削除"""
+        current_time = time.time()
+        if current_time - self._last_cache_cleanup > 300:  # 5分ごとにクリーンアップ
+            expired_keys = [
+                key for key, value in self._advice_cache.items()
+                if current_time - value.timestamp > self._cache_ttl
+            ]
+            for key in expired_keys:
+                del self._advice_cache[key]
+            self._last_cache_cleanup = current_time
 
     def _call_gemini_api(self, prompt: str) -> str:
         """Gemini APIを呼び出してレスポンスを取得"""
@@ -82,23 +127,84 @@ class GeminiService:
         except Exception as e:
             raise Exception(f"Gemini API call failed: {str(e)}")
 
-    async def generate_advice(
-        self,
-        risk_level: str,
-        confidence_score: float,
-        warnings: List[str]
-    ) -> NutritionAdvice:
-        """
-        リスクレベルに応じた栄養アドバイスを生成
-        
-        Args:
-            risk_level: "LOW", "MEDIUM", "HIGH"のいずれか
-            confidence_score: 解析結果の信頼度（0-1）
-            warnings: 画像品質に関する警告メッセージのリスト
+    async def generate_advice(self, risk_level: str, confidence_score: float, warnings: List[str]) -> NutritionAdvice:
+        """アドバイスを生成（キャッシュがある場合はそれを使用）"""
+        try:
+            # 入力値の検証
+            if risk_level not in ["LOW", "MEDIUM", "HIGH"]:
+                raise ValueError(f"無効なリスクレベル: {risk_level}")
+            if not 0 <= confidence_score <= 1.0:
+                raise ValueError(f"無効な信頼度スコア: {confidence_score}")
+
+            # キャッシュキーの生成
+            cache_key = CacheKey.create(risk_level, warnings)
             
-        Returns:
-            NutritionAdvice: 構造化された栄養アドバイス
-        """
+            # キャッシュのクリーンアップ
+            self._cleanup_cache()
+            
+            # キャッシュチェック
+            if cache_key in self._advice_cache:
+                cached_advice = self._advice_cache[cache_key]
+                if time.time() - cached_advice.timestamp < self._cache_ttl:
+                    return NutritionAdvice(
+                        **{k: v for k, v in cached_advice.__dict__.items() if k != 'timestamp'},
+                        cached=True
+                    )
+
+            # 新しいアドバイスを生成
+            advice = await self._execute_with_timeout(
+                self._generate_advice_internal(risk_level, confidence_score, warnings),
+                timeout=self._timeout_seconds
+            )
+            
+            # キャッシュに保存
+            if isinstance(advice, NutritionAdvice):  # エラーレスポンスでない場合のみキャッシュ
+                advice.timestamp = time.time()
+                self._advice_cache[cache_key] = advice
+            
+            return advice
+
+        except Exception as e:
+            return await self._create_error_response(str(e))
+
+    async def _execute_with_timeout(self, coroutine, timeout: float):
+        try:
+            return await asyncio.wait_for(coroutine, timeout=timeout)
+        except asyncio.TimeoutError:
+            return await self._create_timeout_response()
+
+    @lru_cache(maxsize=100)
+    def _create_error_response_data(self, error_type: str = "SYSTEM_ERROR") -> ErrorResponse:
+        """エラーレスポンスのデータを生成（同期メソッド）"""
+        return ErrorResponse(
+            summary="申し訳ありません。システムエラーが発生しました。一時的な問題の可能性があります。",
+            warnings=[f"エラーが発生しました: {error_type}"],
+            iron_rich_foods=[
+                "レバー（豚、鶏、牛）",
+                "赤身の魚（マグロ、カツオ）",
+                "ほうれん草",
+                "大豆製品"
+            ],
+            meal_suggestions=[
+                "バランスの取れた食事を心がけてください",
+                "鉄分を多く含む食材を取り入れましょう"
+            ],
+            lifestyle_tips=[
+                "定期的な運動を心がけましょう",
+                "十分な睡眠を取りましょう",
+                "医師に相談することをお勧めします"
+            ]
+        )
+
+    async def _create_error_response(self, error_type: str = "SYSTEM_ERROR") -> ErrorResponse:
+        """エラーレスポンスを非同期で生成"""
+        return self._create_error_response_data(error_type)
+
+    async def _create_timeout_response(self) -> ErrorResponse:
+        """タイムアウト時のエラーレスポンスを生成"""
+        return self._create_error_response_data("TIMEOUT_ERROR: 応答時間が制限を超えました")
+
+    async def _generate_advice_internal(self, risk_level: str, confidence_score: float, warnings: List[str]):
         # プロンプトの構築
         prompt = self._create_prompt(risk_level, confidence_score, warnings)
         
@@ -129,16 +235,24 @@ class GeminiService:
         以下の形式でJSONレスポンスを生成してください：
         {
             "summary": "全体的なアドバイスの要約（100文字程度）",
-            "iron_rich_foods": ["鉄分が豊富な食材のリスト"],
-            "meal_suggestions": ["具体的な食事メニューの提案"],
-            "lifestyle_tips": ["生活習慣に関するアドバイス"]
+            "iron_rich_foods": ["鉄分が豊富な食材のリスト（5-7項目）"],
+            "meal_suggestions": ["具体的な食事メニューの提案（3-5項目）"],
+            "lifestyle_tips": ["生活習慣に関するアドバイス（3-5項目）"]
         }
         
         アドバイスは以下の点を考慮してください：
-        - 鉄分の吸収を促進する食材の組み合わせ
-        - 季節や入手のしやすさ
-        - 調理の手軽さ
-        - 日本の食文化との親和性
+        1. 鉄分の吸収を促進する食材の組み合わせ
+           - ビタミンCとの組み合わせ
+           - タンニンを含む飲み物は避ける
+        2. 季節性と入手のしやすさ
+           - 旬の食材を優先
+           - スーパーで一般的に手に入る食材
+        3. 調理の手軽さ
+           - 15-30分程度で作れるメニュー
+           - 特別な調理器具を必要としない
+        4. 日本の食文化との親和性
+           - 和食中心のメニュー
+           - 日常的に取り入れやすい食材
 
         重要: リスクレベルに応じて、以下のキーワードを必ずsummaryに含めてください：
         - LOWの場合：「予防」というキーワードを含める
@@ -147,9 +261,27 @@ class GeminiService:
         """
         
         risk_contexts = {
-            "LOW": "貧血リスクは低めです（LOW）。予防的な観点から、貧血を防ぐためのアドバイスを提供してください。",
-            "MEDIUM": "貧血リスクは中程度です（MEDIUM）。貧血の可能性を考慮した積極的な改善アドバイスを提供してください。",
-            "HIGH": "貧血リスクは高めです（HIGH）。早急な改善が必要です。具体的な対策と実行しやすい改善アドバイスを提供してください。"
+            "LOW": """
+            貧血リスクは低めです（LOW）。
+            予防的な観点から、以下の点を考慮したアドバイスを提供してください：
+            - 現状維持のための具体的な食事プラン
+            - 手軽に継続できる予防的な習慣
+            - 鉄分を日常的に補給できる食材選び
+            """,
+            "MEDIUM": """
+            貧血リスクは中程度です（MEDIUM）。
+            貧血の可能性を考慮し、以下の点を重視したアドバイスを提供してください：
+            - 鉄分摂取を増やすための具体的な食事改善案
+            - 1週間の食事プランの例
+            - 生活習慣の見直しポイント
+            """,
+            "HIGH": """
+            貧血リスクは高めです（HIGH）。
+            早急な改善が必要です。以下の点を含む具体的なアドバイスを提供してください：
+            - すぐに実践できる食事の改善対策
+            - 鉄分を効率的に摂取できる食材と調理法
+            - 医師への相談を推奨する具体的な症状の説明
+            """
         }
         
         confidence_context = f"\n解析の信頼度は{confidence_score:.0%}です。"
@@ -185,10 +317,86 @@ class GeminiService:
         all_warnings = warnings.copy() if warnings else []
         all_warnings.append(f"アドバイス生成エラー: {error}")
         
+        # リスクレベルに応じたフォールバックメッセージ
+        risk_messages = {
+            "LOW": {
+                "summary": "貧血の予防のため、日々の食事で鉄分を意識的に摂取することをお勧めします。システムエラーが発生しましたが、一般的な予防アドバイスをご提供します。",
+                "iron_rich_foods": [
+                    "ほうれん草（和食の定番）",
+                    "レバー（豚、鶏、牛）",
+                    "牡蠣（生食や加熱）",
+                    "大豆製品（納豆、豆腐）",
+                    "ひじき（乾物）"
+                ],
+                "meal_suggestions": [
+                    "ほうれん草と油揚げの煮浸し",
+                    "レバニラ炒め",
+                    "ひじきの煮物"
+                ],
+                "lifestyle_tips": [
+                    "毎食、野菜を1/3程度取り入れましょう",
+                    "ビタミンCを含む果物を食後に摂取すると鉄分の吸収が良くなります",
+                    "定期的な運動で血行を促進しましょう"
+                ]
+            },
+            "MEDIUM": {
+                "summary": "貧血の可能性があるため、積極的な鉄分摂取をお勧めします。システムエラーが発生しましたが、一般的な改善アドバイスをご提供します。",
+                "iron_rich_foods": [
+                    "レバー（鉄分が特に豊富）",
+                    "赤身肉（牛肉、豚肉）",
+                    "ほうれん草（和食に取り入れやすい）",
+                    "小松菜（手に入りやすい）",
+                    "納豆（毎日の食事に）",
+                    "あさり（味噌汁の具に）"
+                ],
+                "meal_suggestions": [
+                    "レバーの甘辛炒め（ビタミンC野菜を添えて）",
+                    "小松菜と油揚げの煮浸し",
+                    "あさりの味噌汁と納豆ご飯",
+                    "牛肉と青菜の炒め物"
+                ],
+                "lifestyle_tips": [
+                    "鉄分の多い食材を毎食1品以上取り入れましょう",
+                    "コーヒーや緑茶は食事の30分以上前後を空けて飲みましょう",
+                    "十分な睡眠を取り、ストレスを軽減しましょう",
+                    "定期的な血液検査をお勧めします"
+                ]
+            },
+            "HIGH": {
+                "summary": "貧血リスクが高いため、早急な対策が必要です。システムエラーが発生しましたが、重要な改善アドバイスをご提供します。医師への相談も推奨します。",
+                "iron_rich_foods": [
+                    "レバー（豚、鶏、牛：鉄分が極めて豊富）",
+                    "牡蠣（生食や加熱調理）",
+                    "赤身肉（牛肉が特におすすめ）",
+                    "ほうれん草（毎日の食事に）",
+                    "小松菜（手に入りやすい）",
+                    "ひじき（乾物で常備に）",
+                    "あさり（味噌汁やパスタに）"
+                ],
+                "meal_suggestions": [
+                    "レバーの生姜焼き（ビタミンC野菜を多めに）",
+                    "牡蠣と小松菜の炒め物",
+                    "ひじきと大豆の煮物",
+                    "牛肉とほうれん草のソテー",
+                    "あさりと青菜の和風パスタ"
+                ],
+                "lifestyle_tips": [
+                    "できるだけ早めに医師に相談することをお勧めします",
+                    "鉄分サプリメントの使用を医師に相談してみましょう",
+                    "毎食、鉄分の多い食材を必ず取り入れましょう",
+                    "ビタミンCを含む食材と組み合わせて摂取しましょう",
+                    "十分な休息を取り、無理な運動は控えめにしましょう"
+                ]
+            }
+        }
+        
+        # デフォルトはMEDIUMのメッセージを使用
+        fallback = risk_messages.get(risk_level, risk_messages["MEDIUM"])
+        
         return NutritionAdvice(
-            summary="申し訳ありません。アドバイス生成中にエラーが発生しました。一般的な貧血予防のアドバイスを提供させていただきます。",
-            iron_rich_foods=["レバー", "ほうれん草", "牡蠣"],
-            meal_suggestions=["レバーとほうれん草の炒め物"],
-            lifestyle_tips=["規則正しい食事を心がけましょう"],
+            summary=fallback["summary"],
+            iron_rich_foods=fallback["iron_rich_foods"],
+            meal_suggestions=fallback["meal_suggestions"],
+            lifestyle_tips=fallback["lifestyle_tips"],
             warnings=all_warnings
         ) 

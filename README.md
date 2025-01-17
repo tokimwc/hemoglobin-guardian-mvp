@@ -41,6 +41,42 @@ hemoglobin-guardian-mvp/
 
 ## 開発環境のセットアップ
 
+### 重要な注意点（Windows環境）
+
+1. **作業ディレクトリ**
+   - プロジェクトルート: `C:\dev\hemoglobin-guardian-mvp`
+   - バックエンド: `C:\dev\hemoglobin-guardian-mvp\backend`
+   - フロントエンド: `C:\dev\hemoglobin-guardian-mvp\frontend`
+
+2. **パスの指定**
+   - Windowsでは`\`（バックスラッシュ）を使用
+   - 例: `tests\integration\test_gemini_integration.py`
+   - 相対パスよりも絶対パスの使用を推奨（特にテスト実行時）
+
+3. **仮想環境の活性化**
+   ```batch
+   # プロジェクトルートから
+   cd C:\dev\hemoglobin-guardian-mvp\backend
+   .\venv\Scripts\activate
+   ```
+
+4. **テスト実行**
+   ```batch
+   # 統合テスト
+   python -m pytest tests\integration\test_gemini_integration.py -v
+
+   # パフォーマンステスト
+   python -m pytest tests\performance\test_gemini_performance.py -v
+
+   # カバレッジレポート
+   python -m pytest --cov=src tests\ --cov-report=term-missing
+   ```
+
+5. **トラブルシューティング**
+   - パスが見つからないエラー → 絶対パスを使用
+   - モジュールが見つからないエラー → 仮想環境が有効化されているか確認
+   - 権限エラー → 管理者権限で実行
+
 ### 1. Firebase プロジェクト作成
 1. [Firebaseコンソール](https://console.firebase.google.com/) で新規プロジェクトを作成
 2. Authentication や Firestore の有効化
@@ -160,6 +196,33 @@ python -m pytest --cov=src tests/ --cov-report=term-missing
    - 目標: 80%以上
    - 現在: 81%達成
    - 未カバー: エラーハンドリング部分
+
+## 開発者向け注意事項
+
+### Gemini API利用時の注意点
+1. エラーハンドリング
+   - タイムアウトは4秒に設定されています
+   - エラー時は適切なフォールバックレスポンスを返すようにしてください
+   - 入力値のバリデーションを必ず実装してください
+
+2. パフォーマンス要件
+   - 通常の応答時間：10秒以内
+   - エラー時の応答時間：5秒以内
+   - メモリ使用量：通常50MB以内、エラー時10MB以内
+   - 同時リクエスト数：最大2件
+
+3. APIクォータ制限
+   - 同時リクエスト時は10秒の間隔を空けてください
+   - エラー発生時はリトライ間隔を適切に設定してください
+   - テスト実行時は特にクォータ制限に注意してください
+
+4. テスト実行時の注意
+   - 仮想環境が有効化されていることを確認
+   - 正しいPythonバージョンを使用（3.9以上）
+   - Windowsの場合、パスの区切り文字に注意（バックスラッシュを使用）
+
+### 開発環境セットアップ
+（既存の内容は維持）
 
 ---
 

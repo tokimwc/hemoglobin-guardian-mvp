@@ -102,3 +102,41 @@ async def test_generate_advice_response_format(gemini_service):
     assert all(len(food) > 0 for food in result.iron_rich_foods)  # 空の食材名がない
     assert all(len(menu) > 0 for menu in result.meal_suggestions)  # 空のメニュー名がない
     assert all(len(tip) > 0 for tip in result.lifestyle_tips)  # 空のアドバイスがない 
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_generate_advice_with_low_confidence(gemini_service):
+    """非常に低い信頼度スコアでのアドバイス生成テスト"""
+    result = await gemini_service.generate_advice(
+        risk_level="MEDIUM",
+        confidence_score=0.2,  # 非常に低い信頼度
+        warnings=["画像の品質が非常に低いです"]
+    )
+    
+    # 基本的な検証
+    assert isinstance(result, NutritionAdvice)
+    assert len(result.summary) > 0
+    assert len(result.iron_rich_foods) > 0
+    assert len(result.meal_suggestions) > 0
+    assert len(result.lifestyle_tips) > 0
+    
+    # 低信頼度に関する警告の検証
+    assert any("信頼度" in warning.lower() or "確実" not in result.summary.lower() for warning in result.warnings)
+    assert "可能性" in result.summary or "かもしれません" in result.summary
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_generate_advice_with_invalid_risk_level(gemini_service):
+    """無効なリスクレベルでのアドバイス生成テスト"""
+    result = await gemini_service.generate_advice(
+        risk_level="INVALID",  # 無効なリスクレベル
+        confidence_score=0.8,
+        warnings=[]
+    )
+    
+    # 基本的な検証
+    assert isinstance(result, NutritionAdvice)
+    assert len(result.summary) > 0
+    
+    # MEDIUMへのフォールバックを検証
+    assert "可能性" in result.summary 
