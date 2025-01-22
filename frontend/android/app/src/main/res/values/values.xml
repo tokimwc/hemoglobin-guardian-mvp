@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Firebaseのテスト用設定 -->
+    <string name="firebase_database_url" translatable="false">https://hemoglobin-guardian-test.firebaseio.com</string>
+    <string name="gcm_defaultSenderId" translatable="false">test-sender-id</string>
+    <string name="google_api_key" translatable="false">test-api-key</string>
+    <string name="google_app_id" translatable="false">test-app-id</string>
+    <string name="google_crash_reporting_api_key" translatable="false">test-crash-reporting-key</string>
+    <string name="google_storage_bucket" translatable="false">hemoglobin-guardian-test.appspot.com</string>
+    <string name="project_id" translatable="false">hemoglobin-guardian-test</string>
+</resources> 

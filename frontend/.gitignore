@@ -43,3 +43,49 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Firebase configuration
+/android/app/google-services.json
+/ios/Runner/GoogleService-Info.plist
+/macos/Runner/GoogleService-Info.plist
+
+# Test related
+/coverage/
+/test_assets/temp/
+/test_driver/screenshots/
+/integration_test/screenshots/
+/test-results/
+
+# Generated files
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+
+# Windows specific
+/windows/flutter/generated_plugin_registrant.*
+/windows/flutter/generated_plugins.cmake
+
+# Gradle related
+.gradle/
+/android/.gradle/
+/android/gradle.properties.local
+/android/local.properties
+
+# IDE specific
+.vscode/
+*.code-workspace
+.classpath
+.project
+.settings/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~.nib

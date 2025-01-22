@@ -196,3 +196,5 @@ backend/credentials/*.json
 # Docker
 docker-compose.override.yml *.pid
 
+# .vscode
+.vscode/
