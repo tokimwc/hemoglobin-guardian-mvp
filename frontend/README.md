@@ -5,9 +5,10 @@
 ## 開発環境要件
 
 ### 必須ソフトウェア
-- Flutter SDK 3.2.0以上
-- Java Development Kit (JDK) 11
-  - 推奨: Eclipse Temurin JDK 11.0.21.9
+- Flutter SDK 3.27.2以上
+- Dart SDK 3.6.1以上
+- Java Development Kit (JDK) 17
+  - 推奨: Eclipse Temurin JDK 17.0.13+11
 - Android Studio Hedgehog | 2023.1.1
 - Android SDK Platform 34
 - Kotlin 1.9.22
@@ -15,12 +16,12 @@
 ### 環境変数設定
 ```bash
 # Windows
-JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-11.0.21.9-hotspot
+JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.13.11-hotspot
 ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
 PATH=%PATH%;%ANDROID_HOME%\platform-tools
 
 # macOS/Linux
-export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-11.jdk/Contents/Home
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home
 export ANDROID_HOME=$HOME/Library/Android/sdk
 export PATH=$PATH:$ANDROID_HOME/platform-tools
 ```
@@ -58,8 +59,8 @@ flutter build apk --release
 ### 互換性
 - Android minSdkVersion: 21
 - Android targetSdkVersion: 34
-- Flutter環境: 3.2.0以上
-- Dart SDK: 3.2.0以上
+- Flutter環境: 3.27.2以上
+- Dart SDK: 3.6.1以上
 
 ### パッケージバージョン
 主要な依存パッケージのバージョン：
@@ -80,7 +81,7 @@ flutter build apk --release
 1. Gradle ビルドエラー
    - `flutter clean`を実行
    - Gradleキャッシュをクリア
-   - JDK 11が正しく設定されているか確認
+   - JDK 17が正しく設定されているか確認
 
 2. パッケージの互換性エラー
    - `flutter pub outdated`で更新可能なパッケージを確認
