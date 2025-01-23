@@ -3,6 +3,106 @@
 本リポジトリは、貧血リスクを簡易チェック＆AIアドバイスを行う**MVP版**アプリです。  
 Flutter + Cloud Run + Firebase + Vision AI (Vertex AI) 等を活用し、ハッカソン向けに構築しています。
 
+## 実装済み機能
+
+### 認証機能
+- Firebase Authenticationによるメール/パスワード認証
+- ログイン/新規登録画面
+- エラーハンドリング（日本語メッセージ）
+
+### カメラ/ギャラリー機能
+- リアルタイムカメラプレビュー
+- 写真撮影機能
+- ギャラリーからの画像選択
+- 画像プレビュー表示
+
+### ML Kit解析機能
+- 画像ラベリング（オブジェクト検出）
+- 顔検出機能
+- 色解析（基本実装）
+- 信頼度スコアの計算と表示
+- 解析結果の視覚的表示
+
+## 今後の展開
+
+### 優先実装項目
+1. **Firestoreデータ保存**
+   - 解析結果の永続化
+   - ユーザーごとの履歴管理
+   - セキュリティルールの設定
+
+2. **Vision AI連携**
+   - より高度な画像解析
+   - 貧血リスク推定の精度向上
+
+3. **Gemini APIによるアドバイス生成**
+   - パーソナライズされた栄養アドバイス
+   - リスクレベルに応じた対策提案
+
+## セットアップ手順
+
+### 必要な環境
+- Flutter SDK 3.27.2以上
+- Dart SDK 3.6.1以上
+- Android Studio Hedgehog | 2023.1.1
+- Android SDK Platform 34
+- Firebase プロジェクト
+
+### インストール手順
+
+1. リポジトリのクローン
+```bash
+git clone https://github.com/your-username/hemoglobin-guardian-mvp.git
+cd hemoglobin-guardian-mvp
+```
+
+2. 依存関係のインストール
+```bash
+cd frontend
+flutter pub get
+```
+
+3. Firebaseの設定
+- `google-services.json`を`frontend/android/app/`に配置
+- Firebase Consoleで認証機能を有効化
+
+4. アプリの実行
+```bash
+flutter run
+```
+
+## 開発者向け情報
+
+### アーキテクチャ
+- Riverpod + Freezedによる状態管理
+- go_routerによる画面遷移
+- クリーンアーキテクチャベース
+
+### テスト実行
+```bash
+flutter test
+```
+
+### ビルド
+```bash
+# デバッグビルド
+flutter build apk --debug
+
+# リリースビルド
+flutter build apk --release
+```
+
+## 注意事項
+- 本アプリは貧血リスクの**参考情報**を提供するものです
+- 医療機器としての認証は受けていません
+- 健康上の問題が疑われる場合は医師の診断を優先してください
+
+## ライセンス
+MIT License
+
+## コントリビューション
+Issue や Pull Requestを歓迎します。
+
 ## デモ概要
 - スマホカメラ（or ギャラリー）から爪の写真をアップロード
 - Cloud Run でホストしたサーバーが Vision AI で画像解析し、リスクを判定

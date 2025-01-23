@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ユーザー認証関連のルール
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+      
+      // 解析結果のコレクション
+      match /analysis_records/{recordId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow update: if false;  // 解析結果は作成後に編集不可
+        allow delete: if false;  // 解析結果は削除不可
+      }
+    }
+    
+    // 認証済みユーザーのみアクセス可能なルール
+    match /users/{userId}/analysis_records/{recordId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // その他のコレクションはデフォルトでアクセス不可
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+} 
