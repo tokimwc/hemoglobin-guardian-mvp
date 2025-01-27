@@ -583,14 +583,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.2.1"
-  google_mlkit_barcode_scanning:
-    dependency: "direct main"
-    description:
-      name: google_mlkit_barcode_scanning
-      sha256: "5852d1daa007a05b33f99e3e3fa34227c49d9c41bc92a85d820666a57fd5c35f"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.13.0"
   google_mlkit_commons:
     dependency: "direct main"
     description:
@@ -599,22 +591,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.9.0"
-  google_mlkit_digital_ink_recognition:
-    dependency: "direct main"
-    description:
-      name: google_mlkit_digital_ink_recognition
-      sha256: "11ea94f71062ad2a784aeda7716b16a0e641878b0ddfaa930be23bcff90a6bd7"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.13.0"
-  google_mlkit_entity_extraction:
-    dependency: "direct main"
-    description:
-      name: google_mlkit_entity_extraction
-      sha256: "36e1f5b053c56a4d2919931d75bd73dc37e4c8b68f8e8ebeb2aa99b1bdba4de2"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.14.0"
   google_mlkit_face_detection:
     dependency: "direct main"
     description:
@@ -631,14 +607,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.13.0"
-  google_mlkit_language_id:
-    dependency: "direct main"
-    description:
-      name: google_mlkit_language_id
-      sha256: "80446a42cf5f9daf39f28489b2b38ce883aa9e3daadd73e1fe1591022507248a"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.12.0"
   google_mlkit_object_detection:
     dependency: "direct main"
     description:
@@ -655,14 +623,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.13.0"
-  google_mlkit_smart_reply:
-    dependency: "direct main"
-    description:
-      name: google_mlkit_smart_reply
-      sha256: "5a54de1b38e65a476c05605440691043befd3444570457d85f744c71154ef038"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.12.0"
   google_mlkit_text_recognition:
     dependency: "direct main"
     description:
@@ -671,14 +631,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.14.0"
-  google_mlkit_translation:
-    dependency: "direct main"
-    description:
-      name: google_mlkit_translation
-      sha256: "826cfe74fbee8f455d987949782e1873f50d79c1f2a971848e3f8dde851290d4"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.12.0"
   graphs:
     dependency: transitive
     description:
@@ -788,6 +740,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  intl:
+    dependency: "direct main"
+    description:
+      name: intl
+      sha256: d6f56758b7d3014a48af9701c085700aac781a92a87a62b1333b46d8879661cf
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.19.0"
   io:
     dependency: transitive
     description:
@@ -965,7 +925,7 @@ packages:
     source: hosted
     version: "1.9.0"
   path_provider:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: path_provider
       sha256: "50c5dd5b6e1aaf6fb3a78b33f6aa3afca52bf903a8a5298f53101fdaee55bbcd"
@@ -1005,7 +965,7 @@ packages:
     source: hosted
     version: "2.1.2"
   path_provider_windows:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: path_provider_windows
       sha256: bd6f00dbd873bfb70d0761682da2b3a2c2fccc2b9e84c495821639601d81afe7

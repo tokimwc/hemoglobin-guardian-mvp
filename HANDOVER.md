@@ -1,91 +1,126 @@
-# プロジェクト引き継ぎ書
+# 実装引継書
 
-## 1. 実装済み機能
+## プロジェクト概要
+ヘモグロビンガーディアンは、スマートフォンのカメラを使用して貧血リスクを簡易チェックし、AIによるアドバイスを提供するアプリケーションです。
 
-### 1.1 認証機能
-- Firebase Authenticationを使用したメール/パスワード認証
-- ログイン/新規登録画面の実装
-- エラーハンドリングと日本語エラーメッセージ
-- 認証状態に基づいた画面遷移の制御
+## 技術スタック
+- フロントエンド: Flutter 3.27.2
+- バックエンド: Python (Cloud Run)
+- データベース: Cloud Firestore
+- AI/ML: Vision AI, Vertex AI (Gemini)
+- 認証: Firebase Authentication
 
-### 1.2 カメラ/ギャラリー機能
-- カメラプレビューの表示と写真撮影
-- ギャラリーからの画像選択
-- 画像キャプチャ後の解析画面への遷移
-- 画像プレビューの表示
+## 実装済み機能
 
-### 1.3 ML Kit解析機能
-- 画像ラベリング（オブジェクト検出）
-- 顔検出機能
-- 色解析の基本実装
-- 信頼度計算と視覚的表示
-- 解析結果の整形表示
+### 1. データモデル
+#### `AnalysisRecord`クラス
+- Freezedを使用した不変オブジェクトの実装
+- Firestoreとの連携（`toFirestore`/`fromFirestore`メソッド）
+- 以下のフィールドを保持：
+  - id: 記録ID
+  - userId: ユーザーID
+  - createdAt: 作成日時
+  - riskLevel: リスクレベル
+  - riskScore: リスクスコア
+  - adviceText: AIアドバイス
+  - imageUrl: 画像URL（オプション）
+  - mlKitResults: ML Kit解析結果（オプション）
+  - visionAiResults: Vision AI解析結果（オプション）
 
-### 1.4 画面遷移/ルーティング
+### 2. 画面実装
+#### HomeScreen
+- 解析開始ボタン
+- 履歴表示ボタン
+- シンプルなUI構成
+
+#### HistoryScreen
+- 解析履歴の一覧表示
+- 日時フォーマット（intlパッケージ使用）
+- リスクレベルと画像のプレビュー表示
+- ローディング状態とエラー処理
+
+### 3. ルーティング
 - go_routerを使用した画面遷移の実装
-- 認証状態に基づいたリダイレクト
-- 適切なナビゲーションフロー
+- 認証状態に基づくリダイレクト処理
+- 以下のルートを実装：
+  - `/`: HomeScreen
+  - `/camera`: CameraScreen
+  - `/analysis`: AnalysisScreen
+  - `/history`: HistoryScreen
 
-## 2. 今後の必要機能 & 改善点
+### 4. 依存パッケージ
+- intl: ^0.19.0（国際化対応）
+- freezed: ^2.4.5（データモデル）
+- cloud_firestore: ^4.17.5（Firestore連携）
+- その他必要なパッケージ（pubspec.yamlを参照）
 
-### 2.1 Firestoreへのデータ保存 (最優先)
-- 解析結果保存
-  - 解析日時、リスクレベル、検出された特徴などをFirestoreに保存
-  - ユーザー認証IDと紐づけて、履歴・統計を表示できるように
-- Firebaseセキュリティルール
-  - 「認証済みユーザーのみ書き込み・読み込み可能」という最低限のルールを設定
+## 今後の実装タスク
 
-### 2.2 高度な画像解析（Vision AI）
-- ML Kitからアップグレードか、並行運用（ML Kitで前処理→Vision AIで最終判定など）
-- 解析精度が上がると貧血リスク推定や特徴量抽出がより信頼でき、ハッカソンでの技術インパクトが高まる
+### 優先度高
+1. バックエンド連携
+   - Cloud Run APIとの通信実装
+   - エラーハンドリング
 
-### 2.3 AIアドバイス生成 (Gemini API)
-- 現在のリスクレベル + 過去履歴をもとに、「栄養/食事/生活習慣」アドバイスを自動生成
-- プロンプト工夫: リスクが高いユーザーにはより詳しいアドバイス、低いユーザーには予防策などパーソナライズ度合いを高める
+2. 画像解析機能
+   - Vision AIによる画像解析
+   - ML Kitとの統合
 
-### 2.4 UI/UX改善
-- 解析画面のインタラクション強化
-  - ローディングアニメーション・結果表示アニメーションなど
-- 結果一覧/グラフ化
-  - 過去履歴の推移をチャート表示
-  - ユーザーが変化を一目で把握できるデザイン
-- ガイドメッセージ
-  - カメラ撮影時に「明るい場所で撮影してください」などのヒント
+3. AIアドバイス生成
+   - Gemini APIによるアドバイス生成
+   - プロンプトの最適化
 
-### 2.5 エラーハンドリング強化
-- カメラ/ギャラリー失敗時のFallback UI
-- ネットワーク障害 (オフライン時/タイムアウトなど)
-- APIエラー (Vision AI/Gemini APIが応答しない場合のメッセージやリトライ機能)
+### 優先度中
+1. UI/UX改善
+   - ローディング表示の改善
+   - エラーメッセージの改善
+   - アニメーション追加
 
-## 3. 技術的な注意点
+2. テスト実装
+   - 単体テスト
+   - 統合テスト
+   - UIテスト
 
-### 3.1 ML Kit関連
-- 現在の実装は基本的な画像解析のみ
-- 色解析は仮実装（実際の色解析ロジックが必要）
-- 信頼度計算ロジックの改善が必要
+### 優先度低
+1. オフライン対応
+2. 多言語対応
+3. テーマカスタマイズ
 
-### 3.2 認証関連
-- 現状はメール/パスワード認証のみ
-- パスワードリセット機能は未実装
-- ソーシャルログインの追加を検討
+## 注意点・課題
+1. Firestoreのセキュリティルール実装が必要
+2. 画像の一時保存方法の検討
+3. APIキーの安全な管理方法の確立
+4. パフォーマンス最適化（特に画像処理時）
 
-### 3.3 パフォーマンス
-- 画像の圧縮・最適化が未実装
-- キャッシュ戦略の検討が必要
-- オフライン対応の実装が必要
+## テスト環境
+- Android Emulator: SDK Platform 34
+- 実機テスト: 未実施
 
-## 4. 開発環境
-
-### 4.1 必要なセットアップ
-- Flutter SDK 3.27.2以上
-- Firebase プロジェクトの設定
-- ML Kit依存関係の設定
-- 適切な権限設定（カメラ、ストレージ）
-
-### 4.2 ビルド手順
+## デプロイ手順
+1. フロントエンド（Flutter）
 ```bash
-cd frontend
-flutter pub get
-flutter build apk --debug  # デバッグビルド
-flutter build apk --release  # リリースビルド
-``` 
+flutter build apk --release
+```
+
+2. バックエンド（Cloud Run）
+```bash
+cd backend
+gcloud builds submit --tag gcr.io/[project-id]/hemoglobin-backend
+gcloud run deploy
+```
+
+## 開発環境セットアップ
+1. 必要なツール
+   - Flutter SDK 3.27.2以上
+   - Android Studio
+   - Python 3.9以上
+   - Firebase CLI
+
+2. 環境変数
+   - GOOGLE_APPLICATION_CREDENTIALS
+   - FIREBASE_CONFIG
+   - VERTEX_AI_LOCATION
+
+## 参考資料
+- [Flutter公式ドキュメント](https://flutter.dev/docs)
+- [Firebase Flutter Codelab](https://firebase.google.com/codelabs/firebase-get-to-know-flutter)
+- [Vertex AI Documentation](https://cloud.google.com/vertex-ai/docs) 
