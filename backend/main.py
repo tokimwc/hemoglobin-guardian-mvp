@@ -23,7 +23,12 @@ app = FastAPI(
 # CORSミドルウェアの設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 本番環境では適切なオリジンに制限する
+    allow_origins=[
+        "http://localhost:3000",  # 開発環境
+        "http://localhost:8080",  # 開発環境
+        "https://hemoglobin-guardian-mvp-app.web.app",  # 本番環境（Firebase Hosting）
+        os.getenv("FRONTEND_URL", ""),  # 環境変数から取得
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -127,4 +132,32 @@ def _calculate_risk_level(risk_score: float) -> str:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    import logging
+
+    # ロギングの設定
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+
+    # 環境変数から設定を読み込み
+    port = int(os.getenv("PORT", 8080))
+    host = os.getenv("HOST", "0.0.0.0")
+    workers = int(os.getenv("WORKERS", 1))
+    timeout = int(os.getenv("TIMEOUT", 120))
+
+    logger.info(f"Starting server - host: {host}, port: {port}, workers: {workers}")
+
+    # サーバー起動
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        workers=workers,
+        timeout=timeout,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+        access_log=True,
+        log_level="info"
+    )
