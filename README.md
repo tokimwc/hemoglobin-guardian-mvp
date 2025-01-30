@@ -326,3 +326,118 @@ python -m pytest --cov=src tests/ --cov-report=term-missing
 
 ---
 
+## プロジェクト概要
+ヘモグロビンガーディアンは、スマートフォンのカメラを使用して貧血リスクを簡易チェックし、AIによるアドバイスを提供するアプリケーションです。
+
+## 技術スタック
+- フロントエンド: Flutter 3.27.2
+- バックエンド: Python 3.9+ (Cloud Run)
+- データベース: Cloud Firestore
+- AI/ML: Vision AI, Vertex AI (Gemini)
+- 認証: Firebase Authentication
+- コンテナ: Docker
+
+## セットアップ手順
+
+### 1. 必要なツール
+- Flutter SDK 3.27.2以上
+- Python 3.9以上
+- Docker
+- Google Cloud CLI
+- Firebase CLI
+
+### 2. 環境変数の設定
+プロジェクトルートに`.env`ファイルを作成し、必要な環境変数を設定してください。
+
+#### バックエンド (backend/.env)
+```env
+# Firebase設定
+FIREBASE_CREDENTIALS_PATH=./credentials/firebase-service-account.json
+
+# Google Cloud設定
+GOOGLE_APPLICATION_CREDENTIALS=./credentials/google-cloud-service-account.json
+GOOGLE_CLOUD_PROJECT=[PROJECT_ID]
+GOOGLE_CLOUD_LOCATION=asia-northeast1
+
+# Vision AI設定
+VISION_AI_LOCATION=asia-northeast1
+
+# Vertex AI (Gemini)設定
+VERTEX_AI_LOCATION=us-central1
+GEMINI_MODEL_ID=gemini-1.5-pro
+
+# アプリケーション設定
+BACKEND_URL=[CLOUD_RUN_URL]
+```
+
+#### フロントエンド (frontend/.env)
+```env
+BACKEND_URL=[CLOUD_RUN_URL]
+```
+
+### 3. バックエンドのセットアップ
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Windowsの場合: .\venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 4. フロントエンドのセットアップ
+```bash
+cd frontend
+flutter pub get
+```
+
+## 開発環境での実行
+
+### バックエンド
+```bash
+cd backend
+source venv/bin/activate  # Windowsの場合: .\venv\Scripts\activate
+python main.py
+```
+
+### フロントエンド
+```bash
+cd frontend
+flutter run
+```
+
+## デプロイ
+
+### バックエンドのデプロイ
+1. Dockerイメージのビルド
+```bash
+cd backend
+docker build -t [SERVICE_NAME] .
+```
+
+2. Artifact Registryへのプッシュ
+```bash
+docker tag [SERVICE_NAME] asia-northeast1-docker.pkg.dev/[PROJECT_ID]/[REPOSITORY_NAME]/backend:v1
+docker push asia-northeast1-docker.pkg.dev/[PROJECT_ID]/[REPOSITORY_NAME]/backend:v1
+```
+
+3. Cloud Runへのデプロイ
+```bash
+gcloud run deploy [SERVICE_NAME] \
+  --image asia-northeast1-docker.pkg.dev/[PROJECT_ID]/[REPOSITORY_NAME]/backend:v1 \
+  --platform managed \
+  --region asia-northeast1 \
+  --allow-unauthenticated
+```
+
+## APIエンドポイント
+- ヘルスチェック: GET /health
+- 画像解析: POST /analyze
+- 履歴取得: GET /history/{user_id}
+
+## 注意事項
+- 環境変数やAPIキーなどの機密情報は必ず`.env`ファイルで管理し、Gitにコミットしないでください
+- 本番環境へのデプロイ前に、セキュリティ設定を必ず確認してください
+- 大きな画像ファイルを扱う際は、メモリ使用量に注意してください
+
+## ライセンス
+このプロジェクトは非公開です。無断での使用・複製・配布は禁止されています。
+

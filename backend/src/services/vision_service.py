@@ -5,6 +5,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from dataclasses import dataclass
+import os
 
 @dataclass
 class ImageQualityMetrics:
@@ -21,11 +22,40 @@ class NailAnalysisResult:
     confidence_score: float
 
 class VisionService:
+    """Vision AIを使用した画像解析サービス"""
+    
     def __init__(self):
         self.client = vision.ImageAnnotatorClient()
-        self._executor = ThreadPoolExecutor()
+    
+    def analyze_image(self, image_content: bytes) -> Dict:
+        """画像を解析し、色情報などを取得する"""
+        try:
+            image = vision.Image(content=image_content)
+            
+            # 画像プロパティの解析
+            response = self.client.image_properties(image=image)
+            props = response.image_properties_annotation
+            
+            # 色情報の抽出
+            colors = []
+            for color in props.dominant_colors.colors:
+                colors.append({
+                    'red': color.color.red,
+                    'green': color.color.green,
+                    'blue': color.color.blue,
+                    'score': color.score,
+                    'pixel_fraction': color.pixel_fraction
+                })
+            
+            return {
+                'color_properties': colors,
+                'error': None
+            }
+            
+        except Exception as e:
+            raise Exception(f"画像の解析に失敗しました: {str(e)}")
 
-    async def analyze_image(self, image_content: bytes) -> NailAnalysisResult:
+    async def analyze_image_async(self, image_content: bytes) -> NailAnalysisResult:
         """
         画像を非同期で解析し、貧血リスクスコアを算出
         
@@ -127,7 +157,7 @@ class VisionService:
                 'rgb': (r, g, b)
             })
 
-        risk_score = self._calculate_risk_score(colors)
+        risk_score = self._calculate_risk_score(properties)
         return colors, risk_score
 
     def _calculate_confidence_score(self, quality: ImageQualityMetrics, objects) -> float:
