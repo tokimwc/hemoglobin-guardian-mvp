@@ -170,31 +170,50 @@ class GeminiService:
             str: 生成されたプロンプト
         """
         base_context = """
-        あなたは貧血予防の専門家です。
-        ユーザーの爪の色解析結果に基づいて、具体的な栄養アドバイスを提供してください。
-        
-        以下の形式でJSONレスポンスを生成してください：
-        {
-            "summary": "全体的なアドバイスの要約（100文字程度）",
-            "iron_rich_foods": ["鉄分が豊富な食材のリスト（5-7項目）"],
-            "meal_suggestions": ["具体的な食事メニューの提案（3-5項目）"],
-            "lifestyle_tips": ["生活習慣に関するアドバイス（3-5項目）"]
-        }
-        
-        アドバイスは以下の点を考慮してください：
-        1. 鉄分の吸収を促進する食材の組み合わせ
-           - ビタミンCとの組み合わせ
-           - タンニンを含む飲み物は避ける
-        2. 季節性と入手のしやすさ
-           - 旬の食材を優先
-           - スーパーで一般的に手に入る食材
-        3. 調理の手軽さ
-           - 15-30分程度で作れるメニュー
-           - 特別な調理器具を必要としない
-        4. 日本の食文化との親和性
-           - 和食中心のメニュー
-           - 日常的に取り入れやすい食材
-        """
+あなたは貧血予防の専門家として、爪の色解析結果に基づいて栄養アドバイスを提供します。
+Markdownやその他の形式は使用せず、必ず以下の形式の厳密なJSONのみを返してください。
+
+{
+    "summary": "全体的なアドバイスの要約（100文字程度）",
+    "iron_rich_foods": [
+        "鉄分が豊富な食材1",
+        "鉄分が豊富な食材2",
+        "鉄分が豊富な食材3",
+        "鉄分が豊富な食材4",
+        "鉄分が豊富な食材5"
+    ],
+    "meal_suggestions": [
+        "具体的な食事メニュー1",
+        "具体的な食事メニュー2",
+        "具体的な食事メニュー3"
+    ],
+    "lifestyle_tips": [
+        "生活習慣に関するアドバイス1",
+        "生活習慣に関するアドバイス2",
+        "生活習慣に関するアドバイス3"
+    ]
+}
+
+アドバイス生成の際は以下の点を考慮してください：
+1. 鉄分の吸収を促進する食材の組み合わせ
+   - ビタミンCとの組み合わせ
+   - タンニンを含む飲み物は避ける
+2. 季節性と入手のしやすさ
+   - 旬の食材を優先
+   - スーパーで一般的に手に入る食材
+3. 調理の手軽さ
+   - 15-30分程度で作れるメニュー
+   - 特別な調理器具を必要としない
+4. 日本の食文化との親和性
+   - 和食中心のメニュー
+   - 日常的に取り入れやすい食材
+
+注意：
+- 必ず上記のJSON形式のみで回答してください
+- 追加のテキストや説明は一切不要です
+- Markdown形式は使用しないでください
+- コードブロックは使用しないでください
+"""
         
         risk_text = {
             "low": "貧血リスクは低めです",
@@ -205,7 +224,7 @@ class GeminiService:
         confidence_text = f"（信頼度: {int(confidence * 100)}%）"
         warnings_text = "注意事項:\n" + "\n".join(warnings) if warnings else ""
         
-        return f"{base_context}\n\n状況:\n{risk_text}{confidence_text}\n{warnings_text}"
+        return f"{base_context}\n\n入力情報:\n{risk_text}{confidence_text}\n{warnings_text}"
 
     def _parse_response(self, response_text: str) -> Dict:
         """
@@ -216,14 +235,57 @@ class GeminiService:
             Dict: パースされたレスポンス
         """
         try:
-            # レスポンステキストからJSONブロックを抽出
-            start_idx = response_text.find("{")
-            end_idx = response_text.rfind("}") + 1
-            json_str = response_text[start_idx:end_idx]
+            # レスポンステキストの前処理
+            text = response_text.strip()
             
-            return json.loads(json_str)
+            # コードブロックの削除
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0]
+            elif "```" in text:
+                text = text.split("```")[1]
+            text = text.strip()
+            
+            # JSONブロックの抽出（余分なテキストを除去）
+            lines = text.split("\n")
+            json_lines = []
+            in_json = False
+            
+            for line in lines:
+                if line.strip().startswith("{"):
+                    in_json = True
+                if in_json:
+                    json_lines.append(line)
+                if line.strip().endswith("}"):
+                    break
+            
+            if not json_lines:
+                raise ValueError("JSONブロックが見つかりません")
+                
+            json_str = "\n".join(json_lines)
+            
+            # JSONのパース
+            data = json.loads(json_str)
+            
+            # 必須フィールドの確認と型の検証
+            required_fields = {
+                "summary": str,
+                "iron_rich_foods": list,
+                "meal_suggestions": list,
+                "lifestyle_tips": list
+            }
+            
+            for field, expected_type in required_fields.items():
+                if field not in data:
+                    raise ValueError(f"必須フィールドが不足しています: {field}")
+                if not isinstance(data[field], expected_type):
+                    raise ValueError(f"フィールドの型が不正です: {field}")
+                if expected_type == list and not data[field]:
+                    raise ValueError(f"リストが空です: {field}")
+                
+            return data
+            
         except Exception as e:
-            logger.error(f"レスポンスのパースに失敗: {str(e)}")
+            logger.error(f"レスポンスのパースに失敗: {str(e)}\nレスポンステキスト: {response_text}")
             raise ValueError(f"Geminiからのレスポンスのパースに失敗しました: {str(e)}")
 
     async def _cleanup_cache(self):
@@ -273,44 +335,44 @@ class GeminiService:
         confidence_score: float,
         warnings: List[str]
     ) -> Union[NutritionAdvice, ErrorResponse]:
-        """アドバイスを内部的に生成"""
+        """アドバイスを生成する内部メソッド"""
         try:
-            # プロンプトの構築
+            # プロンプトの生成
             prompt = self._create_prompt(risk_level, confidence_score, warnings)
-            logger.debug(f"生成されたプロンプト: {prompt}")
             
-            # Gemini APIを非同期で呼び出してアドバイスを生成
-            response = await self._call_gemini_api(prompt)
-            logger.debug(f"Gemini APIレスポンス: {response}")
+            # Gemini APIの呼び出し
+            response = await asyncio.get_event_loop().run_in_executor(
+                self._executor,
+                lambda: self.model.generate_content(
+                    prompt,
+                    generation_config=GenerationConfig(
+                        temperature=self.temperature,
+                        max_output_tokens=self.max_tokens,
+                        top_p=self.top_p,
+                        top_k=self.top_k
+                    )
+                )
+            )
             
-            # レスポンスをパース
-            try:
-                data = json.loads(response)
-                return NutritionAdvice(
-                    summary=data["summary"],
-                    iron_rich_foods=data["iron_rich_foods"],
-                    meal_suggestions=data["meal_suggestions"],
-                    lifestyle_tips=data["lifestyle_tips"],
-                    warnings=warnings
-                )
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.error(f"レスポンスのパースに失敗: {str(e)}, レスポンス: {response}")
-                return ErrorResponse(
-                    summary="レスポンスの解析に失敗しました",
-                    warnings=[f"パースエラー: {str(e)}"],
-                    iron_rich_foods=["ほうれん草", "レバー", "牛肉"],
-                    meal_suggestions=["鉄分豊富な食事を心がけましょう"],
-                    lifestyle_tips=["十分な睡眠をとりましょう"],
-                    error_type="PARSE_ERROR"
-                )
+            # レスポンスのパース
+            response_data = self._parse_response(response.text)
+            
+            return NutritionAdvice(
+                summary=response_data["summary"],
+                iron_rich_foods=response_data["iron_rich_foods"],
+                meal_suggestions=response_data["meal_suggestions"],
+                lifestyle_tips=response_data["lifestyle_tips"],
+                warnings=warnings
+            )
+            
         except Exception as e:
             logger.error(f"アドバイス生成中にエラー: {str(e)}")
             return ErrorResponse(
                 summary="アドバイス生成中にエラーが発生しました",
-                warnings=[str(e)],
                 iron_rich_foods=["ほうれん草", "レバー", "牛肉"],
                 meal_suggestions=["鉄分豊富な食事を心がけましょう"],
                 lifestyle_tips=["十分な睡眠をとりましょう"],
+                warnings=[f"Gemini API call failed: {str(e)}"],
                 error_type="GENERATION_ERROR"
             )
 

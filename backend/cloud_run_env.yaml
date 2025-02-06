@@ -1,0 +1,49 @@
+env_variables:
+  # アプリケーション設定
+  APP_NAME: "HemoglobinGuardian"
+  API_VERSION: "v1"
+  DEBUG: "False"  # 本番環境ではFalse
+  
+  # サーバー設定
+  HOST: "0.0.0.0"
+  PORT: "8080"
+  WORKERS: "2"
+  
+  # Google Cloud設定
+  GOOGLE_CLOUD_PROJECT: "hemoglobin-guardian-prod"
+  VISION_AI_LOCATION: "asia-northeast1"
+  VERTEX_AI_LOCATION: "asia-northeast1"
+  GEMINI_MODEL_ID: "gemini-1.5-pro-vision"
+  
+  # フロントエンド設定
+  FRONTEND_URL: "https://hemoglobin-guardian.web.app"
+  
+  # CORS設定
+  CORS_ORIGINS: '["https://hemoglobin-guardian.web.app"]'
+  ALLOWED_HOSTS: '["hemoglobin-backend-226832076887.asia-northeast1.run.app"]'
+  
+  # ログ設定
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  
+  # パフォーマンス設定
+  MAX_CONCURRENT_REQUESTS: "10"
+  REQUEST_TIMEOUT_SECONDS: "30"
+  RETRY_COUNT: "3"
+  RETRY_DELAY_SECONDS: "1"
+  
+  # Gemini API設定
+  GEMINI_TEMPERATURE: "0.3"
+  GEMINI_MAX_TOKENS: "1024"
+  GEMINI_TOP_P: "0.8"
+  GEMINI_TOP_K: "40"
+  GEMINI_TIMEOUT_SECONDS: "4.0"
+  
+  # キャッシュ設定
+  CACHE_TTL_SECONDS: "3600"
+  MAX_CACHE_ITEMS: "1000"
+  ADVICE_CACHE_TTL_SECONDS: "3600"
+
+# 注意: 以下の環境変数はCloud RunのSecrets Managerで管理します
+# - FIREBASE_CREDENTIALS_PATH
+# - GOOGLE_APPLICATION_CREDENTIALS 

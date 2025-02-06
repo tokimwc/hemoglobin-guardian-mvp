@@ -20,3 +20,8 @@ vertexai>=0.0.1
 python-jose[cryptography]>=3.3.0  # JWT認証用
 passlib[bcrypt]>=1.7.4  # パスワードハッシュ化
 aiofiles>=23.2.1  # 非同期ファイル操作 
+python-dotenv>=1.0.0
+
+# レート制限
+slowapi>=0.1.9
+fastapi-limiter>=0.1.0

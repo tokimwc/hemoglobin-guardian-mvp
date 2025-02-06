@@ -1,4 +1,4 @@
-FROM python:3.9-slim AS builder
+FROM python:3.9-slim
 
 WORKDIR /app
 
@@ -49,7 +49,9 @@ ENV PORT=8080 \
     PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONHASHSEED=random \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Expose port
 EXPOSE ${PORT}
@@ -59,4 +61,12 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
 # Start command with explicit environment variable usage
-CMD ["sh", "-c", "python -m uvicorn main:app --host ${HOST} --port ${PORT} --workers ${WORKERS} --timeout ${TIMEOUT} --proxy-headers --forwarded-allow-ips=* --lifespan on"] 
+CMD ["sh", "-c", "python -m uvicorn main:app --host ${HOST} --port ${PORT} --workers ${WORKERS} --timeout ${TIMEOUT} --proxy-headers --forwarded-allow-ips=* --lifespan on"]
+
+# 実行ユーザーの設定
+RUN useradd -m -s /bin/bash app_user
+RUN chown -R app_user:app_user /app
+USER app_user
+
+# 起動コマンド
+CMD ["python", "main.py"] 

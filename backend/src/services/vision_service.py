@@ -26,6 +26,7 @@ class VisionService:
     
     def __init__(self):
         self.client = vision.ImageAnnotatorClient()
+        self._executor = ThreadPoolExecutor(max_workers=3)
     
     def analyze_image(self, image_content: bytes) -> Dict:
         """画像を解析し、色情報などを取得する"""
@@ -118,17 +119,28 @@ class VisionService:
     def _check_image_quality(self, properties) -> ImageQualityMetrics:
         """画像品質のチェック"""
         # 明るさスコアの計算
+        colors = properties.dominant_colors.colors
+        if not colors:
+            return ImageQualityMetrics(
+                is_blurry=True,
+                brightness_score=0.0,
+                has_proper_lighting=False,
+                has_detected_nail=False
+            )
+            
+        # RGB値を0-255から0-1の範囲に正規化して明るさを計算
         brightness = sum(
-            color.color.red + color.color.green + color.color.blue
-            for color in properties.dominant_colors.colors
-        ) / (len(properties.dominant_colors.colors) * 3)
+            (color.color.red + color.color.green + color.color.blue) / (255.0 * 3)
+            for color in colors
+        ) / len(colors)
         
-        # 適切な照明条件かチェック
+        # 適切な照明条件かチェック（0-1の範囲で判定）
         proper_lighting = 0.3 <= brightness <= 0.8
         
         # ブレ検出（色の鮮明さで判定）
+        # スコアの閾値を調整（0.1 → 0.05）
         is_blurry = any(
-            color.score < 0.1 for color in properties.dominant_colors.colors
+            color.score < 0.05 for color in colors
         )
         
         return ImageQualityMetrics(
@@ -140,10 +152,25 @@ class VisionService:
 
     def _detect_nail_region(self, objects) -> bool:
         """爪領域の検出"""
-        # 手や指のオブジェクトを探す
-        relevant_labels = {'Hand', 'Finger', 'Nail'}
-        detected_objects = {obj.name for obj in objects}
-        return bool(detected_objects & relevant_labels)
+        # 手や指、爪に関連するラベルをさらに拡張
+        relevant_labels = {
+            'Hand', 'Finger', 'Nail', 'Thumb', 'Fingernail',
+            'Skin', 'Flesh', 'Body part', 'Joint', 'Gesture',
+            'Finger tip', 'Manicure', 'Cuticle', 'Digit'
+        }
+        
+        # オブジェクトラベルを取得（大文字小文字を区別しない）
+        detected_objects = {obj.name.lower() for obj in objects}
+        relevant_labels_lower = {label.lower() for label in relevant_labels}
+        
+        # スコアの高いオブジェクトを優先
+        high_confidence_objects = [
+            obj for obj in objects
+            if obj.score > 0.5 and obj.name.lower() in relevant_labels_lower
+        ]
+        
+        # 高信頼度のオブジェクトがあるか、または関連ラベルが検出された場合にTrue
+        return bool(high_confidence_objects) or bool(detected_objects & relevant_labels_lower)
 
     def _analyze_colors(self, properties) -> Tuple[List[Dict], float]:
         """色解析とリスクスコア計算"""
@@ -173,7 +200,7 @@ class VisionService:
             base_score *= 0.3
             
         # オブジェクト検出の信頼度を考慮
-        if objects:
+        if objects and len(objects) > 0:
             avg_confidence = sum(obj.score for obj in objects) / len(objects)
             base_score *= avg_confidence
             
@@ -200,6 +227,8 @@ class VisionService:
 
         # リスクスコアの計算
         risk_scores = []
+        total_score = 0.0
+        
         for color in colors:
             h, s, v = color['hsv']
             
@@ -207,35 +236,43 @@ class VisionService:
             # 健康な爪は0度付近（赤）から30度付近（ピンク）
             hue_score = min(abs(h - 0) / 180.0, abs(h - 360) / 180.0)
             if 0 <= h <= 30:
-                hue_score = 0.3  # 健康的な色相範囲
+                hue_score = 0.2  # 健康的な色相範囲（スコアを下げる）
             
             # 彩度による評価（0-100%）
             # 健康な爪は彩度が40-80%程度
             saturation_score = 0.0
-            if s < 40:  # 彩度が低すぎる（白っぽい）
-                saturation_score = 0.8
+            if s < 30:  # 彩度が低すぎる（白っぽい）
+                saturation_score = 0.9
+            elif s < 40:  # やや低め
+                saturation_score = 0.6
             elif s > 80:  # 彩度が高すぎる（不自然）
                 saturation_score = 0.5
             
             # 明度による評価（0-100%）
             # 健康な爪は明度が60-90%程度
             value_score = 0.0
-            if v < 60:  # 暗すぎる
-                value_score = 0.7
-            elif v > 90:  # 明るすぎる（白っぽい）
+            if v < 50:  # 暗すぎる
+                value_score = 0.8
+            elif v > 95:  # 明るすぎる（白っぽい）
                 value_score = 0.9
+            elif v > 90:  # やや明るすぎる
+                value_score = 0.6
             
             # 総合スコア（重み付け）
             risk_score = (
-                0.4 * hue_score +      # 色相の重要度
-                0.4 * saturation_score + # 彩度の重要度
+                0.5 * hue_score +      # 色相の重要度を上げる
+                0.3 * saturation_score + # 彩度の重要度
                 0.2 * value_score       # 明度の重要度
             )
             
             risk_scores.append(risk_score * color['score'])
+            total_score += color['score']
         
         # 重み付き平均でリスクスコアを算出（0-1の範囲）
-        final_score = sum(risk_scores)
+        if not risk_scores or total_score == 0:
+            return 0.5  # デフォルトのリスクスコア
+            
+        final_score = sum(risk_scores) / total_score
         return min(max(final_score, 0.0), 1.0)
 
     def _rgb_to_hsv(self, r: float, g: float, b: float) -> Tuple[float, float, float]:
@@ -250,14 +287,12 @@ class VisionService:
         if diff == 0:
             h = 0
         elif cmax == r:
-            h = 60 * ((g-b)/diff % 6)
+            h = 60 * ((g - b) / diff % 6)
         elif cmax == g:
-            h = 60 * ((b-r)/diff + 2)
-        else:
-            h = 60 * ((r-g)/diff + 4)
-        
-        if h < 0:
-            h += 360
+            h = 60 * ((b - r) / diff + 2)
+        elif cmax == b:
+            h = 60 * ((r - g) / diff + 4)
+        h = (h + 360) % 360
 
         # 彩度（Saturation）の計算
         s = 0 if cmax == 0 else (diff / cmax) * 100

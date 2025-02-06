@@ -394,7 +394,8 @@ flutter pub get
 ### バックエンド
 ```bash
 cd backend
-source venv/bin/activate  # Windowsの場合: .\venv\Scripts\activate
+.\venv\Scripts\activate  # Windowsの場合
+source venv/bin/activate # macOS/Linuxの場合
 python main.py
 ```
 

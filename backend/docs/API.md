@@ -1,135 +1,247 @@
-# ヘモグロビンガーディアン API仕様書
+# API仕様書
 
 ## 概要
+HemoglobinGuardian APIは、爪の画像解析と栄養アドバイス生成を提供するRESTful APIです。
 
-貧血リスクを推定し、AIアドバイスを提供するバックエンドAPI
+## ベースURL
+```
+開発環境: http://localhost:8080
+本番環境: https://hemoglobin-backend-226832076887.asia-northeast1.run.app
+```
 
-- ベースURL: `http://localhost:8080` (開発環境)
-- 認証: なし (MVP版)
+## 共通仕様
+
+### リクエストヘッダー
+```
+Content-Type: application/json or multipart/form-data
+Authorization: Bearer {token}  # 将来的な実装のために予約
+```
+
+### エラーレスポンス
+```json
+{
+    "detail": {
+        "message": "エラーメッセージ",
+        "code": "ERROR_CODE",
+        "timestamp": "2024-03-20T12:34:56.789Z"
+    }
+}
+```
+
+### エラーコード
+| コード | 説明 |
+|--------|------|
+| 400 | 不正なリクエスト |
+| 401 | 認証エラー |
+| 403 | 権限エラー |
+| 404 | リソースが見つからない |
+| 429 | リクエスト制限超過 |
+| 500 | サーバーエラー |
 
 ## エンドポイント
 
-### 1. ヘルスチェック
+### 1. 画像解析 API
 
+#### リクエスト
+```
+POST /analyze
+Content-Type: multipart/form-data
+```
+
+#### パラメータ
+| パラメータ | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| file | File | ○ | 解析する画像ファイル（JPG/PNG） |
+| user_id | string | × | ユーザーID（履歴保存用） |
+
+#### レスポンス
+```json
+{
+    "analysis_result": {
+        "risk_score": 0.42,
+        "risk_level": "MEDIUM",
+        "confidence": 0.85
+    },
+    "image_quality": {
+        "brightness_score": 0.95,
+        "blur_score": 0.12,
+        "nail_detected": true
+    },
+    "advice": {
+        "summary": "貧血の予防のため、鉄分を意識的に摂取することをお勧めします",
+        "iron_rich_foods": [
+            "ほうれん草",
+            "レバー",
+            "牛肉",
+            "あさり",
+            "納豆"
+        ],
+        "meal_suggestions": [
+            "レバニラ炒め",
+            "ほうれん草の胡麻和え",
+            "あさりの酒蒸し"
+        ],
+        "lifestyle_tips": [
+            "ビタミンCを含む食品と一緒に摂取する",
+            "お茶は食事の30分前後を避ける",
+            "規則正しい食生活を心がける"
+        ]
+    },
+    "warnings": [
+        "画像がやや不鮮明です",
+        "爪の検出精度が低い可能性があります"
+    ],
+    "timestamp": "2024-03-20T12:34:56.789Z"
+}
+```
+
+### 2. ヘルスチェック API
+
+#### リクエスト
 ```
 GET /health
 ```
 
-システムの稼働状態を確認します。
-
 #### レスポンス
-
 ```json
 {
     "status": "healthy",
-    "version": "1.0.0"
+    "timestamp": "2024-03-20T12:34:56.789Z",
+    "version": "1.0.0",
+    "services": {
+        "vision_ai": "ok",
+        "gemini": "ok",
+        "firebase": "ok"
+    }
 }
 ```
 
-### 2. 画像解析
-
-```
-POST /analyze
-```
-
-爪の画像を解析し、貧血リスクを推定します。
+### 3. 解析履歴取得 API
 
 #### リクエスト
-
-- Content-Type: `multipart/form-data`
-
-| パラメータ | 型 | 必須 | 説明 |
-|------------|-------|--------|----------|
-| file | File | ○ | 爪の画像ファイル (JPEG/PNG) |
-| user_id | string | × | ユーザーID（履歴保存時に必要） |
-
-#### レスポンス
-
-```json
-{
-    "risk_score": 0.5,
-    "risk_level": "MEDIUM",
-    "confidence_score": 0.8,
-    "warnings": [
-        "画像がブレています"
-    ],
-    "quality_metrics": {
-        "is_blurry": true,
-        "brightness_score": 0.7,
-        "has_proper_lighting": true,
-        "has_detected_nail": true
-    },
-    "advice": {
-        "summary": "鉄分を意識的に摂取することをおすすめします",
-        "iron_rich_foods": [
-            "レバー",
-            "ほうれん草",
-            "牡蠣"
-        ],
-        "meal_suggestions": [
-            "レバーとほうれん草の炒め物"
-        ],
-        "lifestyle_tips": [
-            "規則正しい食事を心がけましょう"
-        ]
-    },
-    "created_at": "2024-01-15T12:34:56.789Z"
-}
-```
-
-#### エラーレスポンス
-
-```json
-{
-    "detail": "画像解析中にエラーが発生しました: ..."
-}
-```
-
-### 3. 解析履歴取得
-
 ```
 GET /history/{user_id}
 ```
 
-ユーザーの解析履歴を取得します。
-
 #### パラメータ
-
 | パラメータ | 型 | 必須 | 説明 |
-|------------|-------|--------|----------|
+|-----------|-----|------|------|
 | user_id | string | ○ | ユーザーID |
-| limit | integer | × | 取得件数 (デフォルト: 10) |
+| limit | integer | × | 取得件数（デフォルト: 10） |
+| offset | integer | × | 開始位置（デフォルト: 0） |
 
 #### レスポンス
-
 ```json
-[
-    {
-        "history_id": "abc123",
-        "user_id": "user123",
-        "analysis_result": {
-            // 解析結果（上記の解析レスポンスと同じ形式）
+{
+    "history": [
+        {
+            "id": "analysis_123",
+            "timestamp": "2024-03-20T12:34:56.789Z",
+            "risk_score": 0.42,
+            "risk_level": "MEDIUM",
+            "image_url": "https://storage.googleapis.com/...",
+            "summary": "貧血の予防のため、鉄分を意識的に摂取することをお勧めします"
         }
+    ],
+    "pagination": {
+        "total": 42,
+        "limit": 10,
+        "offset": 0,
+        "has_more": true
     }
-]
+}
 ```
 
-## エラーコード
+## レート制限
 
-| ステータスコード | 説明 |
-|-----------------|------|
-| 200 | 成功 |
-| 422 | バリデーションエラー |
-| 500 | サーバーエラー |
+### 制限値
+- 認証なし: 10 リクエスト/分
+- 認証あり: 100 リクエスト/分
 
-## 注意事項
+### レート制限ヘッダー
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1621436800
+```
 
-1. 画像品質について
-   - ブレのない鮮明な画像を使用
-   - 適切な明るさでの撮影
-   - 爪全体が写るように撮影
+## バッチ処理 API
 
-2. 解析結果について
-   - リスクスコアは参考値です
-   - 医療診断の代替とはなりません
-   - 信頼度スコアが低い場合は再撮影を推奨 
+### 1. 画像一括解析 API
+
+#### リクエスト
+```
+POST /batch/analyze
+Content-Type: multipart/form-data
+```
+
+#### パラメータ
+| パラメータ | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| files[] | File[] | ○ | 解析する画像ファイル（最大10件） |
+| user_id | string | × | ユーザーID |
+
+#### レスポンス
+```json
+{
+    "batch_id": "batch_123",
+    "total_files": 3,
+    "processed": 3,
+    "results": [
+        {
+            "file_name": "image1.jpg",
+            "status": "success",
+            "result": { /* 解析結果 */ }
+        },
+        {
+            "file_name": "image2.jpg",
+            "status": "error",
+            "error": "画像が不鮮明です"
+        }
+    ]
+}
+```
+
+## WebSocket API
+
+### 1. リアルタイム解析状況
+
+#### 接続
+```
+WS /ws/analysis/{analysis_id}
+```
+
+#### メッセージフォーマット
+```json
+{
+    "type": "progress",
+    "data": {
+        "step": "vision_analysis",
+        "progress": 45,
+        "message": "画像解析中..."
+    }
+}
+```
+
+## 開発者向け情報
+
+### テスト用エンドポイント
+開発環境でのみ利用可能な特別なエンドポイント：
+
+```
+POST /dev/mock-analyze
+GET /dev/reset-rate-limit
+```
+
+### APIバージョニング
+- URLパスによるバージョニング（例: `/v1/analyze`）
+- 現在のバージョン: v1
+- 非推奨バージョンの通知: `X-API-Deprecated: true`
+
+### CORS設定
+```python
+origins = [
+    "http://localhost:3000",
+    "https://hemoglobin-guardian.web.app"
+]
+``` 

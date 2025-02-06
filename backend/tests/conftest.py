@@ -2,6 +2,24 @@ import pytest
 from datetime import datetime, timezone
 import os
 import json
+from pathlib import Path
+from fastapi.testclient import TestClient
+from dotenv import load_dotenv
+
+# テスト環境変数の設定
+os.environ["TEST_MODE"] = "True"
+
+# .env.testファイルの読み込み
+env_file = Path(__file__).parent.parent / ".env.test"
+load_dotenv(env_file)
+
+# アプリケーションのインポート（環境変数設定後）
+from main import app
+from tests.mocks.mock_services import (
+    MockVisionService,
+    MockGeminiService,
+    MockFirestoreService
+)
 
 @pytest.fixture(autouse=True)
 def setup_test_env():
@@ -39,4 +57,51 @@ def setup_test_env():
 @pytest.fixture
 def utc_now():
     """現在のUTC時刻を返す"""
-    return datetime.now(timezone.utc) 
+    return datetime.now(timezone.utc)
+
+@pytest.fixture(scope="session", autouse=True)
+def load_env():
+    """テスト環境変数の読み込み"""
+    env_file = Path(__file__).parent.parent / ".env.test"
+    load_dotenv(env_file)
+
+@pytest.fixture
+def test_client():
+    """テストクライアントの作成（ミドルウェアは main.py ですでに追加済み）"""
+    return TestClient(app, base_url="http://testserver")
+
+@pytest.fixture
+def mock_vision_service():
+    """Vision AIサービスのモック"""
+    return MockVisionService()
+
+@pytest.fixture
+def mock_gemini_service():
+    """Gemini APIサービスのモック"""
+    return MockGeminiService()
+
+@pytest.fixture
+def mock_firestore_service():
+    """Firestoreサービスのモック"""
+    return MockFirestoreService()
+
+@pytest.fixture
+def test_image_path():
+    """テスト用画像のパス"""
+    return Path(__file__).parent / "test_data" / "test_nail2.jpg"
+
+@pytest.fixture
+def mock_user_id():
+    """モックユーザーID"""
+    return "test_user_123"
+
+class MockGeminiService:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def generate_advice(self, image_content):
+        return {
+            "predictions": [
+                {"risk_level": "low", "advice": "Mock advice for low risk"}
+            ]
+        } 

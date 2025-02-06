@@ -28,10 +28,18 @@ ENV/
 .coverage
 .pytest_cache/
 htmlcov/
+test_results/
+.coverage.*
+.benchmarks/
+performance_test_results/
+integration_test_results/
 
 # 認証情報
 credentials/*.json
 .env
+.env.*
+!.env.example
+!.env.test
 
 # IDE
 .idea/
@@ -41,4 +49,42 @@ credentials/*.json
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+test_data/
+!test_data/.gitkeep
+mock_data/
+fixtures/
+
+# ログファイル
+logs/
+*.log.*
+error_logs/
+debug_logs/
+
+# 一時ファイルとキャッシュ
+.temp/
+.cache/
+tmp/
+
+# レート制限関連
+rate_limit_store/
+*.rdb
+
+# 設定ファイル
+*.cfg
+*.conf
+config.local.yaml
+settings.local.yaml
+
+# デプロイメント関連
+*.deploy
+deployment.local.yaml
+service.local.yaml
+
+# その他
+.history/
+
+# プロファイリング
+*.prof
+profile_results/
