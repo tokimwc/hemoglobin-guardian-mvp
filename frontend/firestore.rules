@@ -1,0 +1,31 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ユーザー認証が必要
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // 解析履歴
+      match /history/{historyId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        
+        // バリデーションルール
+        function isValidAnalysisResult() {
+          let result = request.resource.data;
+          return result.keys().hasAll(['riskLevel', 'riskScore', 'adviceText', 'createdAt']) &&
+                 result.riskLevel is string &&
+                 result.riskScore is number &&
+                 result.adviceText is string &&
+                 result.createdAt is timestamp;
+        }
+        
+        // 作成時のバリデーション
+        allow create: if isValidAnalysisResult();
+        
+        // 更新時のバリデーション（メモのみ更新可能）
+        allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note']);
+      }
+    }
+  }
+} 

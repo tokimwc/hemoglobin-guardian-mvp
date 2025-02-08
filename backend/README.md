@@ -135,11 +135,21 @@ netstat -ano | findstr :8080
 taskkill /F /PID <PID>
 ```
 
-2. 環境変数が認識されない場合
+2. Android実機デバッグ時の接続設定
+```bash
+# デバイス一覧の確認
+adb devices
+
+# 特定のデバイスに対してポートフォワーディングを設定
+adb -s [DEVICE_ID] reverse tcp:8080 tcp:8080
+```
+注意：フロントエンドの`.env`ファイルの`BACKEND_URL`を`http://localhost:8080`に設定してください。
+
+3. 環境変数が認識されない場合
 - `.env`ファイルの存在を確認
 - 仮想環境が有効化されているか確認
 
-3. 依存関係のエラー
+4. 依存関係のエラー
 ```bash
 pip install --upgrade -r requirements.txt
 ```
@@ -157,4 +167,4 @@ pip install --upgrade -r requirements.txt
 ## 関連ドキュメント
 - [アーキテクチャ設計書](./docs/ARCHITECTURE.md)
 - [API仕様書](./docs/API.md)
-- [引き継ぎ書](./docs/HANDOVER.md) 
+- [引き継ぎ書](./docs/HANDOVER.md)

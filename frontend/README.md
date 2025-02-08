@@ -91,6 +91,19 @@ flutter build apk --release
    - `google-services.json`の配置を確認
    - アプリケーションIDが一致しているか確認
 
+4. バックエンド接続エラー
+   - バックエンドサーバーが起動しているか確認
+   - `.env`ファイルの`BACKEND_URL`設定を確認
+   - Android実機デバッグの場合：
+     ```bash
+     # デバイス一覧の確認
+     adb devices
+     
+     # 特定のデバイスに対してポートフォワーディングを設定
+     adb -s [DEVICE_ID] reverse tcp:8080 tcp:8080
+     ```
+     - `.env`ファイルの`BACKEND_URL`を`http://localhost:8080`に設定
+
 ## 参考リンク
 - [Flutter公式ドキュメント](https://docs.flutter.dev/)
 - [Firebase Flutter セットアップ](https://firebase.google.com/docs/flutter/setup)

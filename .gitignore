@@ -171,6 +171,7 @@ cython_debug/
 .pypirc
 
 .cursorrules
+.cursorignore
 
 requirements.md
 

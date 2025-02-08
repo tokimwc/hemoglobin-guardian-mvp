@@ -251,6 +251,20 @@ gcloud run deploy [SERVICE_NAME] \
    - FIREBASE_CONFIG
    - VERTEX_AI_LOCATION
 
+3. Android実機デバッグの設定
+   - USBデバッグを有効化
+   - adb reverseを使用したポートフォワーディング
+   ```bash
+   # 接続されているデバイスの確認
+   adb devices
+   
+   # 特定のデバイスに対してポートフォワーディングを設定
+   adb -s [DEVICE_ID] reverse tcp:8080 tcp:8080
+   ```
+   - フロントエンドの`.env`ファイルで`BACKEND_URL=http://localhost:8080`を設定
+
+注意：実際の値は`.env`ファイルで管理し、GitHubにはプッシュしないでください。
+
 ## 参考資料
 - [Flutter公式ドキュメント](https://flutter.dev/docs)
 - [Firebase Flutter Codelab](https://firebase.google.com/codelabs/firebase-get-to-know-flutter)
@@ -493,4 +507,60 @@ indexes:
 3. バッチ処理の検討（大量データ処理時）
 4. キャッシュ戦略の最適化
 
-// ... existing code ... 
+## 2024年2月7日の作業内容
+
+### 1. 画像解析機能の実装
+#### 実施内容
+- `AnalysisService`の実装
+  - ML Kitによる画像解析機能の実装
+  - 画像ラベルとテキスト認識の実装
+  - エラーハンドリングの実装
+  - モックデータの実装（バックエンド連携までの暫定対応）
+
+#### 具体的な改善点
+1. ML Kit実装
+   - `ImageLabeler`と`TextRecognizer`の初期化
+   - 画像解析メソッドの実装
+   - 型変換エラーの修正
+
+2. モックデータ
+   - 一時的なFirestore処理の無効化
+   - モックの解析結果の実装
+   - デバッグログの追加
+
+3. エラーハンドリング
+   - `ApiException`の実装
+   - 画像ファイル存在チェック
+   - ML Kit解析エラーの処理
+
+### 2. 次のステップ
+1. バックエンドAPI連携
+   - Vision AIによる画像解析の実装
+   - Gemini APIによるアドバイス生成の実装
+   - エラーハンドリングの実装
+
+2. Firestore連携
+   - 解析結果の永続化
+   - 履歴機能の実装
+   - セキュリティルールの設定
+
+3. UI/UX改善
+   - ローディング表示の改善
+   - エラー表示の改善
+   - 結果表示の視覚的強化
+
+### 3. 注意点
+1. ML Kit関連
+   - `ImageLabeler`と`TextRecognizer`のリソース解放
+   - メモリ使用量の監視
+   - 画像サイズの最適化
+
+2. Firestore関連
+   - セキュリティルールの実装が必要
+   - オフライン対応の実装が必要
+   - データ構造の最適化
+
+3. エラーハンドリング
+   - 適切なエラーメッセージの表示
+   - リトライメカニズムの実装
+   - エラーログの収集

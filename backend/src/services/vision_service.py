@@ -1,11 +1,14 @@
 from google.cloud import vision
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 import numpy as np
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from dataclasses import dataclass
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ImageQualityMetrics:
@@ -28,33 +31,63 @@ class VisionService:
         self.client = vision.ImageAnnotatorClient()
         self._executor = ThreadPoolExecutor(max_workers=3)
     
-    def analyze_image(self, image_content: bytes) -> Dict:
-        """画像を解析し、色情報などを取得する"""
+    async def analyze_image(self, image_content: bytes) -> Dict[str, Any]:
+        """画像を解析し、貧血リスクを評価します"""
         try:
+            # 非同期でVision APIを呼び出すためにループを取得
+            loop = asyncio.get_event_loop()
+            
+            # Vision APIリクエストの準備
             image = vision.Image(content=image_content)
             
-            # 画像プロパティの解析
-            response = self.client.image_properties(image=image)
-            props = response.image_properties_annotation
+            # 複数の解析を並行して実行
+            tasks = [
+                loop.run_in_executor(None, self.client.face_detection, image),
+                loop.run_in_executor(None, self.client.image_properties, image),
+                loop.run_in_executor(None, self.client.object_localization, image)
+            ]
             
-            # 色情報の抽出
+            # 全ての解析結果を待機
+            face_response, properties_response, object_response = await asyncio.gather(*tasks)
+            
+            # 顔の検出結果を処理
+            faces = face_response.face_annotations
+            face_confidence = faces[0].detection_confidence if faces else 0.0
+            
+            # 色解析
             colors = []
-            for color in props.dominant_colors.colors:
-                colors.append({
-                    'red': color.color.red,
-                    'green': color.color.green,
-                    'blue': color.color.blue,
-                    'score': color.score,
-                    'pixel_fraction': color.pixel_fraction
-                })
+            if properties_response.image_properties_annotation.dominant_colors:
+                for color in properties_response.image_properties_annotation.dominant_colors.colors:
+                    colors.append({
+                        'red': color.color.red,
+                        'green': color.color.green,
+                        'blue': color.color.blue,
+                        'score': color.score
+                    })
+            
+            # 画質評価
+            quality_metrics = self._check_image_quality(properties_response.image_properties_annotation)
+            
+            # 爪の検出確認
+            has_nail = self._detect_nail_region(object_response.localized_object_annotations)
+            quality_metrics.has_detected_nail = has_nail
+            
+            # リスクスコアの計算
+            risk_score = self._calculate_risk_score(properties_response.image_properties_annotation)
             
             return {
-                'color_properties': colors,
-                'error': None
+                "risk_score": risk_score,
+                "confidence_score": max(face_confidence, 0.5),  # 最低0.5の信頼度を保証
+                "detected_colors": colors,
+                "is_blurry": quality_metrics.is_blurry,
+                "brightness_score": quality_metrics.brightness_score,
+                "has_proper_lighting": quality_metrics.has_proper_lighting,
+                "has_detected_nail": quality_metrics.has_detected_nail
             }
             
         except Exception as e:
-            raise Exception(f"画像の解析に失敗しました: {str(e)}")
+            logger.error(f"Vision API解析中にエラーが発生: {str(e)}", exc_info=True)
+            raise Exception(f"画像解析に失敗しました: {str(e)}")
 
     async def analyze_image_async(self, image_content: bytes) -> NailAnalysisResult:
         """
@@ -117,60 +150,102 @@ class VisionService:
         )
 
     def _check_image_quality(self, properties) -> ImageQualityMetrics:
-        """画像品質のチェック"""
-        # 明るさスコアの計算
-        colors = properties.dominant_colors.colors
-        if not colors:
-            return ImageQualityMetrics(
-                is_blurry=True,
-                brightness_score=0.0,
-                has_proper_lighting=False,
-                has_detected_nail=False
-            )
+        """画像の品質を評価します"""
+        # 明るさの評価
+        brightness_score = 0.0
+        has_proper_lighting = False
+        
+        if properties.dominant_colors:
+            # RGBの平均値から明るさを計算
+            total_brightness = 0
+            total_weight = 0
             
-        # RGB値を0-255から0-1の範囲に正規化して明るさを計算
-        brightness = sum(
-            (color.color.red + color.color.green + color.color.blue) / (255.0 * 3)
-            for color in colors
-        ) / len(colors)
+            for color in properties.dominant_colors.colors:
+                rgb_avg = (color.color.red + color.color.green + color.color.blue) / 3
+                total_brightness += rgb_avg * color.score
+                total_weight += color.score
+            
+            if total_weight > 0:
+                brightness_score = total_brightness / total_weight / 255
+                has_proper_lighting = 0.3 <= brightness_score <= 0.7
         
-        # 適切な照明条件かチェック（0-1の範囲で判定）
-        proper_lighting = 0.3 <= brightness <= 0.8
-        
-        # ブレ検出（色の鮮明さで判定）
-        # スコアの閾値を調整（0.1 → 0.05）
-        is_blurry = any(
-            color.score < 0.05 for color in colors
-        )
+        # ぼかしの検出（サンプル実装）
+        is_blurry = brightness_score < 0.2
         
         return ImageQualityMetrics(
             is_blurry=is_blurry,
-            brightness_score=brightness,
-            has_proper_lighting=proper_lighting,
-            has_detected_nail=False  # 後で更新
+            brightness_score=brightness_score,
+            has_proper_lighting=has_proper_lighting,
+            has_detected_nail=False  # 初期値、後で更新
         )
 
     def _detect_nail_region(self, objects) -> bool:
-        """爪領域の検出"""
-        # 手や指、爪に関連するラベルをさらに拡張
-        relevant_labels = {
-            'Hand', 'Finger', 'Nail', 'Thumb', 'Fingernail',
-            'Skin', 'Flesh', 'Body part', 'Joint', 'Gesture',
-            'Finger tip', 'Manicure', 'Cuticle', 'Digit'
+        """爪領域の検出を試みます（改善版）"""
+        # 拡張した爪関連のラベル
+        nail_related_labels = {
+            'finger', 'hand', 'nail', 'skin', 'thumb', 'fingernail',
+            'body_part', 'joint', 'flesh', 'digit', 'manicure',
+            'cuticle', 'gesture', 'finger_joint', 'palm', 'wrist',
+            'knuckle', 'human_body', 'tissue', 'limb', 'close up',
+            'macro photography', 'detail', 'texture', 'surface',
+            'skin tone', 'body', 'photograph', 'finger tip',
+            'extremity', 'person', 'human', 'anatomy',
+            'part', 'organ', 'muscle', 'bone',
+            # 新たなキーワードを追加
+            'nail bed', 'nail plate', 'finger nail', 'nail art', 'artificial nails',
+            'cosmetics', 'beauty', ' 指の爪', '爪のケア', 'ネイル' # 日本語ラベルも追加
         }
-        
-        # オブジェクトラベルを取得（大文字小文字を区別しない）
-        detected_objects = {obj.name.lower() for obj in objects}
-        relevant_labels_lower = {label.lower() for label in relevant_labels}
-        
-        # スコアの高いオブジェクトを優先
-        high_confidence_objects = [
-            obj for obj in objects
-            if obj.score > 0.5 and obj.name.lower() in relevant_labels_lower
-        ]
-        
-        # 高信頼度のオブジェクトがあるか、または関連ラベルが検出された場合にTrue
-        return bool(high_confidence_objects) or bool(detected_objects & relevant_labels_lower)
+
+        # 信頼度の閾値をさらに緩和
+        high_confidence_threshold = 0.08  # さらに低い閾値
+        medium_confidence_threshold = 0.01  # さらに低い閾値
+
+        # 方法1: 高信頼度の検出（部分一致を含む）
+        for obj in objects:
+            obj_name = obj.name.lower().replace('_', ' ')
+            if obj.score >= high_confidence_threshold:
+                if obj_name in nail_related_labels:
+                    return True
+                # 部分一致チェック
+                if any(label in obj_name or obj_name in label or
+                       any(word in obj_name.split() for word in label.split())
+                       for label in nail_related_labels):
+                    return True
+
+        # 方法2: 中程度の信頼度の検出
+        medium_confidence_objects = []
+        for obj in objects:
+            obj_name = obj.name.lower().replace('_', ' ')
+            if medium_confidence_threshold <= obj.score < high_confidence_threshold:
+                if obj_name in nail_related_labels:
+                    medium_confidence_objects.append(obj)
+                elif any(label in obj_name or obj_name in label or
+                         any(word in obj_name.split() for word in label.split())
+                         for label in nail_related_labels):
+                    medium_confidence_objects.append(obj)
+                if len(medium_confidence_objects) >= 2:
+                    return True
+
+        # 方法3: バウンディングボックス分析（細かいオブジェクトに対応）
+        for obj in objects:
+            box = obj.bounding_poly.normalized_vertices
+            center_x = (box[0].x + box[2].x) / 2
+            center_y = (box[0].y + box[2].y) / 2
+            width = abs(box[2].x - box[0].x)
+            height = abs(box[2].y - box[0].y)
+            area = width * height
+            aspect_ratio = width / height if height > 0 else 0
+
+            # 小さなオブジェクトも検出するため、面積の閾値を下げ、アスペクト比の範囲を拡大
+            if (0.0 <= center_x <= 1.0 and
+                0.0 <= center_y <= 1.0 and
+                0.0005 <= area <= 0.5 and # 面積の閾値をさらに下げる
+                0.01 <= aspect_ratio <= 30.0): # アスペクト比の範囲をさらに拡大
+                return True
+
+        # 方法4: さらなる改善策として、Vertex AI SDK を利用した高度なオブジェクト検出に切り替えることも検討できます。
+
+        return False
 
     def _analyze_colors(self, properties) -> Tuple[List[Dict], float]:
         """色解析とリスクスコア計算"""
@@ -207,73 +282,46 @@ class VisionService:
         return base_score
 
     def _calculate_risk_score(self, properties) -> float:
-        """
-        色解析結果から貧血リスクスコアを計算
+        """色情報から貧血リスクスコアを計算します"""
+        if not properties.dominant_colors:
+            return 0.5  # デフォルト値
         
-        爪の色が薄いピンク/白っぽい場合にリスクが高いと判定
-        健康な爪の色相は赤みがかったピンクで、彩度が中程度以上
-        """
-        # 主要な色の抽出と HSV 変換
-        colors = []
+        # 爪の健康的な色の範囲（RGB）
+        healthy_nail_color = {
+            'red': (220, 255),
+            'blue': (180, 220),
+            'green': (180, 220)
+        }
+        
+        risk_score = 0.5
+        total_weight = 0
+        
         for color in properties.dominant_colors.colors:
-            r, g, b = color.color.red, color.color.green, color.color.blue
-            score = color.score
-            hsv = self._rgb_to_hsv(r, g, b)
-            colors.append({
-                'hsv': hsv,
-                'score': score,
-                'rgb': (r, g, b)
-            })
+            # 各色チャンネルの評価
+            r_score = self._evaluate_color_channel(color.color.red, healthy_nail_color['red'])
+            g_score = self._evaluate_color_channel(color.color.green, healthy_nail_color['green'])
+            b_score = self._evaluate_color_channel(color.color.blue, healthy_nail_color['blue'])
+            
+            # 色の評価スコアを重み付けして合算
+            color_score = (r_score + g_score + b_score) / 3
+            risk_score += color_score * color.score
+            total_weight += color.score
+        
+        if total_weight > 0:
+            risk_score = risk_score / total_weight
+        
+        # スコアを0-1の範囲に正規化
+        return max(0.0, min(1.0, risk_score))
 
-        # リスクスコアの計算
-        risk_scores = []
-        total_score = 0.0
-        
-        for color in colors:
-            h, s, v = color['hsv']
-            
-            # 色相による評価（0-360度）
-            # 健康な爪は0度付近（赤）から30度付近（ピンク）
-            hue_score = min(abs(h - 0) / 180.0, abs(h - 360) / 180.0)
-            if 0 <= h <= 30:
-                hue_score = 0.2  # 健康的な色相範囲（スコアを下げる）
-            
-            # 彩度による評価（0-100%）
-            # 健康な爪は彩度が40-80%程度
-            saturation_score = 0.0
-            if s < 30:  # 彩度が低すぎる（白っぽい）
-                saturation_score = 0.9
-            elif s < 40:  # やや低め
-                saturation_score = 0.6
-            elif s > 80:  # 彩度が高すぎる（不自然）
-                saturation_score = 0.5
-            
-            # 明度による評価（0-100%）
-            # 健康な爪は明度が60-90%程度
-            value_score = 0.0
-            if v < 50:  # 暗すぎる
-                value_score = 0.8
-            elif v > 95:  # 明るすぎる（白っぽい）
-                value_score = 0.9
-            elif v > 90:  # やや明るすぎる
-                value_score = 0.6
-            
-            # 総合スコア（重み付け）
-            risk_score = (
-                0.5 * hue_score +      # 色相の重要度を上げる
-                0.3 * saturation_score + # 彩度の重要度
-                0.2 * value_score       # 明度の重要度
-            )
-            
-            risk_scores.append(risk_score * color['score'])
-            total_score += color['score']
-        
-        # 重み付き平均でリスクスコアを算出（0-1の範囲）
-        if not risk_scores or total_score == 0:
-            return 0.5  # デフォルトのリスクスコア
-            
-        final_score = sum(risk_scores) / total_score
-        return min(max(final_score, 0.0), 1.0)
+    def _evaluate_color_channel(self, value: int, range_tuple: tuple) -> float:
+        """色チャンネルの値を評価します"""
+        min_val, max_val = range_tuple
+        if min_val <= value <= max_val:
+            return 0.3  # 健康的な範囲内
+        elif value < min_val:
+            return 0.7  # 貧血の可能性
+        else:
+            return 0.5  # 中間的な値
 
     def _rgb_to_hsv(self, r: float, g: float, b: float) -> Tuple[float, float, float]:
         """RGB色空間からHSV色空間への変換"""

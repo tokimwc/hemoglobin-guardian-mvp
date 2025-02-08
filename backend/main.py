@@ -1,18 +1,26 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
+from fastapi.responses import JSONResponse
 from src.middleware.rate_limiter import RateLimiter
+from src.models.analysis import (
+    NailAnalysisResult,
+    ImageQualityMetrics,
+    NutritionAdvice,
+    AnalysisHistory,
+    ErrorResponse
+)
 import json
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+import time
 from src.utils.env_validator import EnvironmentValidator
 import logging
 import sys
 import firebase_admin
 from firebase_admin import credentials
 from typing import Optional, Dict, Any, List
-from fastapi.responses import JSONResponse
 from slowapi import Limiter
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
@@ -21,13 +29,11 @@ from fastapi_limiter import FastAPILimiter
 from fastapi_limiter.depends import RateLimiter
 from contextlib import asynccontextmanager
 import redis.asyncio as redis
-import time
 import imghdr  # 画像ファイル形式を検証するために追加
 
 from src.services.vision_service import VisionService
 from src.services.gemini_service import GeminiService
 from src.services.firestore_service import FirestoreService
-from src.models.analysis import AnalysisResult, AnalysisHistory
 
 # ロガーの設定
 logging.basicConfig(
@@ -44,8 +50,8 @@ if not env_validator.validate():
     logger.error("環境変数の設定が不正です。アプリケーションを終了します。")
     sys.exit(1)
 
-# 環境変数の読み込み
-load_dotenv()
+# 環境変数の読み込み（1回だけ）
+load_dotenv(encoding='utf-8')  # UTF-8エンコーディングを明示的に指定
 
 # サービスのインポート
 if os.getenv("TEST_MODE") == "True":
@@ -61,9 +67,6 @@ else:
     # Firebaseの初期化
     cred = credentials.Certificate(os.getenv("FIREBASE_CREDENTIALS_PATH"))
     firebase_admin.initialize_app(cred)
-
-# グローバルなレート制限設定
-limiter = Limiter(key_func=get_remote_address)
 
 class RateLimiter:
     """カスタムレート制限クラス"""
@@ -140,38 +143,39 @@ app = FastAPI(
     title="ヘモグロビンガーディアン API",
     description="貧血リスク推定＆AIアドバイスを提供するバックエンドAPI",
     version="1.0.0",
-    # テストモードの場合、ホストチェックを無効化
     openapi_prefix="" if os.getenv("TEST_MODE") == "True" else None,
-    lifespan=lifespan  # ライフスパンハンドラを設定
+    lifespan=lifespan
 )
+
+# レート制限の設定
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["100/minute"],
+    storage_uri="memory://",
+    strategy="fixed-window",
+    headers_enabled=True
+)
+
+app.state.limiter = limiter
+
+# レート制限の有効/無効を環境変数で制御
+DISABLE_RATE_LIMIT = os.getenv("DISABLE_RATE_LIMIT", "true").lower() == "true"
+
+@app.on_event("startup")
+async def startup():
+    if DISABLE_RATE_LIMIT:
+        logger.info("レート制限が無効化されています (テスト環境)")
+    else:
+        logger.info("レート制限が有効化されています")
+    logger.info("レート制限を初期化しました")
 
 # レート制限を環境変数で制御
 is_rate_limit_enabled = os.environ.get("DISABLE_RATE_LIMIT") != "true"
 
 if is_rate_limit_enabled:
-    limiter = FastAPILimiter()
-    app.state.limiter = limiter
-    app.add_middleware(FastAPILimiter)
-
-    @app.on_event("startup")
-    async def startup_event():
-        """FastAPI 起動時のイベントハンドラ (レート制限有効時のみ)"""
-        await FastAPILimiter.init(app)
-        
-    # レート制限の設定
-    rate_limiter = RateLimiter(
-        times=int(os.getenv("MAX_REQUESTS_PER_MINUTE", 60)),
-        seconds=60
-    )
-    
-    # レート制限ミドルウェアの追加
-    app.middleware("http")(rate_limiter)
+    app.add_middleware(SlowAPIMiddleware)
 else:
     print("レート制限が無効化されています (テスト環境)")
-
-# SlowAPIミドルウェアを追加（テストモードに関係なく常に追加）
-app.state.limiter = limiter
-app.add_middleware(SlowAPIMiddleware)
 
 # CORS設定の取得
 def get_cors_origins():
@@ -183,12 +187,11 @@ def get_cors_origins():
 # CORSミドルウェアの設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_cors_origins(),
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
-    expose_headers=["Content-Length", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
-    max_age=600
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # セキュリティスキーマの設定
@@ -207,9 +210,12 @@ async def add_security_headers(request, call_next):
 
 # レート制限ミドルウェアの追加
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+# 許可するホストの設定を環境変数から読み込み
+allowed_hosts = json.loads(os.getenv("ALLOWED_HOSTS", '["localhost", "127.0.0.1", "*"]'))
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=json.loads(os.getenv("ALLOWED_HOSTS", '["localhost", "127.0.0.1"]'))
+    allowed_hosts=allowed_hosts
 )
 
 # サービスのインスタンス化
@@ -243,68 +249,30 @@ async def health_check(request: Request):
         }
     }
 
-class AnalysisResult:
-    def __init__(self, image_url: str, analysis_data: Dict[str, Any], timestamp: float):
-        self.image_url = image_url
-        self.analysis_data = analysis_data
-        self.timestamp = timestamp
-        self.risk_score = self._calculate_risk_score(analysis_data)
-        self.advice = self._generate_advice(analysis_data)
-        self.warnings = self._generate_warnings(analysis_data)
-
-    def _calculate_risk_score(self, analysis_data: Dict[str, Any]) -> float:
-        """ヘモグロビンレベルに基づいてリスクスコアを計算"""
-        level = analysis_data.get('hemoglobin_level', 'normal').lower()
-        if level == 'low':
-            return 0.8
-        elif level == 'very_low':
-            return 1.0
-        return 0.2  # normal
-
-    def _generate_advice(self, analysis_data: Dict[str, Any]) -> Dict[str, List[str]]:
-        """解析結果に基づいてアドバイスを生成"""
-        level = analysis_data.get('hemoglobin_level', 'normal').lower()
-        base_advice = {
-            "nutrition": ["鉄分を多く含む食品を摂取することをお勧めします"],
-            "lifestyle": ["規則正しい生活を心がけましょう"],
-            "medical": ["定期的な健康診断を受けることをお勧めします"]
-        }
+# カスタムミドルウェアでレート制限を実装
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """レート制限ミドルウェア"""
+    if os.getenv("TEST_MODE") == "True":
+        return await call_next(request)
         
-        if level == 'low':
-            base_advice["nutrition"].append("レバーや赤身肉を積極的に摂取してください")
-            base_advice["medical"].append("医師に相談することをお勧めします")
-        elif level == 'very_low':
-            base_advice["nutrition"].append("すぐに医師に相談してください")
-            base_advice["medical"].append("緊急の医療相談が必要です")
-        
-        return base_advice
-
-    def _generate_warnings(self, analysis_data: Dict[str, Any]) -> List[str]:
-        """解析結果に基づいて警告メッセージを生成"""
-        warnings = []
-        confidence = analysis_data.get('confidence', 1.0)
-        level = analysis_data.get('hemoglobin_level', 'normal').lower()
-
-        if confidence < 0.8:
-            warnings.append("解析結果の信頼性が低い可能性があります")
-
-        if level == 'low':
-            warnings.append("貧血の可能性があります。医師に相談することをお勧めします")
-        elif level == 'very_low':
-            warnings.append("重度の貧血の可能性があります。早急に医師の診察を受けてください")
-
-        return warnings
-
-    def to_dict(self) -> Dict[str, Any]:
-        """結果を辞書形式に変換"""
-        return {
-            "image_url": self.image_url,
-            "analysis_data": self.analysis_data,
-            "timestamp": self.timestamp,
-            "risk_score": self.risk_score,
-            "advice": self.advice,
-            "warnings": self.warnings  # 警告メッセージを追加
-        }
+    rate_limiter = get_rate_limiter(request)
+    client_ip = request.client.host
+    
+    if rate_limiter.is_rate_limited(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="リクエスト制限を超過しました。しばらく待ってから再試行してください。"
+        )
+    
+    response = await call_next(request)
+    remaining = rate_limiter.get_remaining(client_ip)
+    
+    response.headers["X-RateLimit-Limit"] = str(rate_limiter.requests_per_minute)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    response.headers["X-RateLimit-Reset"] = str(int(time.time()) + 60)
+    
+    return response
 
 # 画像解析エンドポイント
 @app.post("/analyze")
@@ -314,11 +282,15 @@ async def analyze_image(
     request: Request = None
 ):
     try:
+        logger.info(f"画像解析リクエストを受信: filename={file.filename}, content_type={file.content_type}")
+        
         # ファイルの検証
         contents = await file.read()
-        # 画像ファイルかどうかを確認
         image_format = imghdr.what(None, contents)
+        logger.info(f"検出された画像フォーマット: {image_format}")
+        
         if not image_format:
+            logger.error("無効なファイル形式")
             raise HTTPException(
                 status_code=400,
                 detail="無効なファイル形式です。JPEG、PNG、GIF形式の画像ファイルを使用してください。"
@@ -327,131 +299,89 @@ async def analyze_image(
         # ファイルポインタを先頭に戻す
         await file.seek(0)
         
-        # 画像の解析処理
-        image_url = "mock_image_url"  # テスト用のモックURL
-        analysis_data = {
-            "hemoglobin_level": "normal",
-            "confidence": 0.95,
-            "recommendations": ["バランスの取れた食事を継続してください"]
-        }
-        
-        # 解析結果オブジェクトの作成
-        result = AnalysisResult(
-            image_url=image_url,
-            analysis_data=analysis_data,
-            timestamp=time.time()
-        )
-
-        # 認証されたユーザーの場合、結果を保存
-        if user_id:
-            await firestore_service.save_analysis_result(
-                user_id=user_id,
-                analysis_result=result.to_dict()
+        try:
+            # Vision AIによる画像解析
+            logger.info("Vision AI解析を開始")
+            vision_result = await vision_service.analyze_image(contents)
+            logger.info(f"Vision AI解析結果: {vision_result}")
+            
+            # Gemini APIによる栄養アドバイス生成
+            logger.info("Gemini API解析を開始")
+            nutrition_advice = await gemini_service.generate_advice(vision_result)
+            logger.info(f"Gemini API解析結果: {nutrition_advice}")
+            
+            # 解析結果オブジェクトの作成
+            result = NailAnalysisResult(
+                risk_score=vision_result.get("risk_score", 0.5),
+                confidence_score=vision_result.get("confidence_score", 0.8),
+                risk_level=_calculate_risk_level(vision_result.get("risk_score", 0.5)),
+                detected_colors=vision_result.get("detected_colors", []),
+                quality_metrics=ImageQualityMetrics(
+                    is_blurry=vision_result.get("is_blurry", False),
+                    brightness_score=vision_result.get("brightness_score", 0.8),
+                    has_proper_lighting=vision_result.get("has_proper_lighting", True),
+                    has_detected_nail=vision_result.get("has_detected_nail", True)
+                ),
+                created_at=datetime.utcnow().isoformat(),
+                user_id=user_id
+            )
+            
+            # 認証されたユーザーの場合、結果を保存
+            if user_id:
+                logger.info(f"解析結果を保存: user_id={user_id}")
+                analysis_history = AnalysisHistory(
+                    history_id=str(int(time.time())),
+                    user_id=user_id,
+                    analysis_result=result,
+                    nutrition_advice=nutrition_advice,
+                    created_at=datetime.utcnow()
+                )
+                await firestore_service.save_analysis_result(
+                    user_id=user_id,
+                    analysis_result=analysis_history.dict()
+                )
+            
+            return JSONResponse(
+                content={
+                    "analysis": result.dict(),
+                    "nutrition_advice": nutrition_advice.dict() if nutrition_advice else None
+                },
+                status_code=200
+            )
+            
+        except Exception as service_error:
+            logger.error(f"サービス処理中にエラーが発生: {str(service_error)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"画像解析中にエラーが発生しました: {str(service_error)}"
             )
 
-        return JSONResponse(
-            content=result.to_dict(),
-            status_code=200
-        )
-
     except HTTPException as he:
-        logger.error("画像解析でバリデーションエラーが発生しました", exc_info=True)
+        logger.error(f"HTTPエラーが発生: {he.detail}", exc_info=True)
         return JSONResponse(
-            content={"error": str(he.detail)},
+            content=ErrorResponse(
+                summary=he.detail,
+                error_type="VALIDATION_ERROR" if he.status_code < 500 else "SYSTEM_ERROR"
+            ).dict(),
             status_code=he.status_code
         )
     except Exception as e:
-        logger.error("画像解析エンドポイントでエラーが発生しました", exc_info=True)
+        logger.error(f"予期せぬエラーが発生: {str(e)}", exc_info=True)
         return JSONResponse(
-            content={"error": str(e)},
+            content=ErrorResponse(
+                summary="画像の解析中に問題が発生しました。後ほど再度お試しください。",
+                error_type="SYSTEM_ERROR",
+                warnings=[f"エラーの詳細: {str(e)}"]
+            ).dict(),
             status_code=500
         )
 
-# 解析履歴取得エンドポイント
-@app.get("/history/{user_id}", response_model=List[AnalysisHistory])
-async def get_history(user_id: str, limit: int = 10):
-    try:
-        history = await firestore_service.get_user_history(user_id, limit)
-        return history
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"履歴取得中にエラーが発生しました: {str(e)}"
-        )
-
 def _calculate_risk_level(risk_score: float) -> str:
-    """リスクスコアを3段階のレベルに変換"""
     if risk_score < 0.3:
-        return "LOW"
-    elif risk_score < 0.7:
-        return "MEDIUM"
-    else:
-        return "HIGH"
-
-# CORSプリフライトリクエストのハンドリング
-@app.options("/{rest_of_path:path}")
-async def preflight_handler(rest_of_path: str):
-    return {"detail": "OK"}
-
-# プリフライトリクエストのハンドラー
-@app.options("/analyze")
-async def handle_preflight():
-    return JSONResponse(
-        content={},
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "http://localhost:3000",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            "Access-Control-Max-Age": "600",
-        }
-    )
-
-# RateLimitExceeded例外ハンドラ
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(
-        status_code=429,
-        content={"detail": "Rate limit exceeded"},
-        headers={
-            "X-RateLimit-Limit": "100",
-            "X-RateLimit-Reset": str(int(time.time()) + 60),
-            "Retry-After": "60"
-        }
-    )
-
-# カスタムミドルウェアでレート制限を実装
-@app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
-    if request.method == "OPTIONS":
-        response = await call_next(request)
-        return response
-
-    rate_limiter = get_rate_limiter(request)
-    client_ip = request.client.host
-
-    # テスト用のエンドポイントの場合はレート制限をリセット
-    if request.url.path == "/analyze" and os.getenv("TEST_MODE", "False").lower() == "true":
-        rate_limiter.reset()
-    
-    if rate_limiter.is_rate_limited(client_ip):
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Rate limit exceeded"},
-            headers={
-                "X-RateLimit-Limit": str(rate_limiter.requests_per_minute),
-                "X-RateLimit-Reset": str(int(time.time()) + 60),
-                "Retry-After": "60"
-            }
-        )
-    
-    response = await call_next(request)
-    
-    response.headers["X-RateLimit-Limit"] = str(rate_limiter.requests_per_minute)
-    response.headers["X-RateLimit-Remaining"] = str(rate_limiter.get_remaining(client_ip))
-    response.headers["X-RateLimit-Reset"] = str(int(time.time()) + 60)
-    
-    return response
+        return "low"
+    elif risk_score > 0.7:
+        return "high"
+    return "medium"
 
 if __name__ == "__main__":
     import uvicorn
