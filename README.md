@@ -156,6 +156,49 @@ flutter build apk --debug
 flutter build apk --release
 ```
 
+### API仕様（OpenAPI）
+
+本プロジェクトではOpenAPI仕様（`docs/api/openapi.yaml`）を使用してAPIを定義しています。
+
+#### 1. API仕様の確認方法
+
+```bash
+# Swagger UIでの表示（開発環境）
+cd backend
+uvicorn main:app --reload
+# ブラウザで http://localhost:8000/docs にアクセス
+```
+
+#### 2. コード生成
+
+APIクライアントコードの自動生成：
+```bash
+# Flutterクライアントの生成
+cd frontend
+dart run build_runner build
+
+# FastAPIルーティングの生成（バックエンド）
+cd backend
+python generate_fastapi_routes.py
+```
+
+#### 3. 主要エンドポイント
+
+1. **画像解析 API** (`POST /analyze`)
+   - 爪の画像をアップロードし、貧血リスクを推定
+   - Vision AIによる画像解析
+   - Gemini APIによるアドバイス生成
+
+2. **履歴取得 API** (`GET /history/{userId}`)
+   - ユーザーごとの解析履歴を取得
+   - 最新の結果や過去の推移を確認
+
+#### 4. セキュリティ
+
+- Firebase認証トークンによる認証
+- HTTPSによる通信暗号化
+- レート制限の実装
+
 ## 注意事項
 - 本アプリは貧血リスクの**参考情報**を提供するものです
 - 医療機器としての認証は受けていません
