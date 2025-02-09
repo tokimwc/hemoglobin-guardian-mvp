@@ -1,1 +1,65 @@
-# Security policy  
+# Security policy for Hemoglobin Guardian Backend
+
+# 依存パッケージのセキュリティスキャン設定
+security:
+  # 重要度に基づく脆弱性スキャン
+  severity:
+    critical: true    # 重大な脆弱性
+    high: true       # 高リスクの脆弱性
+    medium: true     # 中程度の脆弱性
+    low: false       # 低リスクの脆弱性（無視）
+
+  # 特定のCVE（Common Vulnerabilities and Exposures）の除外
+  ignore:
+    - CVE-2023-XXXXX  # 誤検知や対応済みの脆弱性
+
+# 依存パッケージのバージョン制限
+dependencies:
+  python:
+    version: ">=3.9.0"
+  fastapi:
+    version: ">=0.100.0"
+  google-cloud-vision:
+    version: ">=3.4.0"
+  google-cloud-aiplatform:
+    version: ">=1.25.0"
+
+# セキュリティ監査の設定
+audit:
+  # 定期的なセキュリティスキャン
+  schedule:
+    enabled: true
+    frequency: "daily"
+  
+  # 監査レポートの設定
+  report:
+    format: "json"
+    output: "./security-reports/"
+
+# 機密情報の検出ルール
+secrets:
+  patterns:
+    - type: "api_key"
+      regex: "[A-Za-z0-9-_]{21}[AQgw]"
+    - type: "firebase_key"
+      regex: "AIza[0-9A-Za-z-_]{35}"
+    - type: "gcp_credentials"
+      regex: ".*credentials.*\\.json$"
+
+# コードスキャンの設定
+code_scanning:
+  enabled: true
+  tools:
+    - bandit     # Pythonセキュリティスキャナー
+    - safety     # 依存関係スキャナー
+  
+  # スキャン対象のディレクトリ
+  include:
+    - "src/**/*.py"
+    - "tests/**/*.py"
+  
+  # スキャン対象外のディレクトリ/ファイル
+  exclude:
+    - "venv/"
+    - "**/__pycache__/"
+    - "tests/data/"

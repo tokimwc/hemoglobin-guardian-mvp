@@ -1,1 +1,136 @@
-openapi: 3.0.0 
+openapi: 3.0.0
+info:
+  title: ヘモグロビンガーディアン API
+  version: 1.0.0
+  description: 貧血リスク推定とAIアドバイス生成のためのAPI
+
+servers:
+  - url: https://api.hemoglobin-guardian.example.com/v1
+    description: 本番環境
+  - url: http://localhost:8000/v1
+    description: 開発環境
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AnalysisRequest:
+      type: object
+      required:
+        - image
+      properties:
+        image:
+          type: string
+          format: base64
+          description: Base64エンコードされた画像データ
+        userId:
+          type: string
+          description: Firebase認証のユーザーID
+
+    AnalysisResponse:
+      type: object
+      properties:
+        riskLevel:
+          type: string
+          enum: [LOW, MEDIUM, HIGH]
+          description: 推定された貧血リスクレベル
+        confidence:
+          type: number
+          format: float
+          description: 推定の信頼度スコア（0-1）
+        advice:
+          type: string
+          description: Gemini APIで生成された栄養アドバイス
+        timestamp:
+          type: string
+          format: date-time
+          description: 解析実施日時
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string
+        details:
+          type: object
+
+paths:
+  /analyze:
+    post:
+      summary: 画像解析による貧血リスク推定
+      description: |
+        アップロードされた爪の画像をVision AIで解析し、
+        貧血リスクレベルを推定してGemini APIで栄養アドバイスを生成します。
+      operationId: analyzeImage
+      tags:
+        - analysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRequest'
+      responses:
+        '200':
+          description: 解析成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+        '400':
+          description: 不正なリクエスト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 認証エラー
+        '500':
+          description: サーバーエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /history/{userId}:
+    get:
+      summary: 解析履歴の取得
+      description: 特定ユーザーの解析履歴を取得します
+      operationId: getHistory
+      tags:
+        - history
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 取得する履歴の最大件数
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: 履歴取得成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AnalysisResponse'
+        '401':
+          description: 認証エラー
+        '404':
+          description: ユーザーが見つかりません

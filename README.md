@@ -71,6 +71,70 @@ flutter pub get
 flutter run
 ```
 
+## テストの実行
+
+### バックエンドのテスト
+
+1. **テストデータの準備**
+```bash
+# テストデータ用のディレクトリ構造を作成
+cd backend/tests/data
+mkdir images
+
+# テスト用の画像を images ディレクトリに配置
+# 以下の命名規則に従ってください：
+# - healthy_nail.jpg  # 健康的な爪の画像
+# - medium_risk_nail.jpg  # やや貧血の可能性がある爪の画像
+# - high_risk_nail.jpg  # 貧血リスクが高い爪の画像
+
+# テストデータ（Base64エンコード）の生成
+python generate_test_data.py
+```
+
+2. **ユニットテストの実行**
+```bash
+cd backend
+python -m pytest tests/ -v
+```
+
+3. **カバレッジレポートの生成**
+```bash
+python -m pytest tests/ --cov=src --cov-report=html
+# レポートは htmlcov/index.html で確認できます
+```
+
+### フロントエンドのテスト
+
+1. **ウィジェットテスト**
+```bash
+cd frontend
+flutter test test/widget_test/
+```
+
+2. **統合テスト**
+```bash
+flutter test integration_test/
+```
+
+### テストデータについて
+
+テストでは、以下の2つの形式でテストデータを管理しています：
+
+1. **元画像ファイル** (`backend/tests/data/images/`)
+   - `healthy_nail.jpg`: 健康的な爪の画像
+   - `medium_risk_nail.jpg`: やや貧血の可能性がある爪の画像
+   - `high_risk_nail.jpg`: 貧血リスクが高い爪の画像
+
+2. **Base64エンコードされたデータ** (`backend/tests/data/test_images.json`)
+   - APIテストで使用
+   - 自動テストの再現性を確保
+   - CI/CDパイプラインでの実行に最適化
+
+テストデータの更新手順：
+1. 新しいテスト画像を `images/` ディレクトリに追加
+2. `generate_test_data.py` を実行してJSONファイルを更新
+3. 両方のファイルをバージョン管理に含める
+
 ## 開発者向け情報
 
 ### アーキテクチャ

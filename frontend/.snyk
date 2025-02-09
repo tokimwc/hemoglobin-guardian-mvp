@@ -1,1 +1,79 @@
-# Snyk security config 
+# Snyk (https://snyk.io) policy file
+
+version: v1.25.0
+
+# 脆弱性管理ポリシー
+ignore:
+  'SNYK-DART-FLUTTER-2324301':
+    - '*':
+        reason: 'Flutter 3.27.2で修正済み'
+        expires: 2024-12-31T00:00:00.000Z
+  
+  'SNYK-DART-FIREBASE-2324302':
+    - '*':
+        reason: '影響を受けない機能のため'
+        expires: 2024-12-31T00:00:00.000Z
+
+# パッケージのバージョン制限
+patch:
+  'SNYK-DART-FLUTTER-2324303':
+    - flutter:
+        patched: '2024-02-09T00:00:00.000Z'
+
+# セキュリティスキャン設定
+cli:
+  # スキャン対象
+  include:
+    - lib/**/*.dart
+    - test/**/*.dart
+  
+  # スキャン対象外
+  exclude:
+    - build/
+    - .dart_tool/
+    - .flutter-plugins
+    - .flutter-plugins-dependencies
+
+  # 重要度に基づくアラート設定
+  severity-threshold: medium
+  
+  # 依存関係のスキャン
+  package-manager: pub
+  
+  # テスト設定
+  test: false
+  
+  # 監査設定
+  audit: true
+  
+  # レポート設定
+  report:
+    format: json
+    output: snyk-report.json
+
+# プロジェクト固有の設定
+project:
+  name: hemoglobin-guardian-frontend
+  environment: production
+  target-reference: main
+  
+  # 依存関係の自動更新設定
+  auto-update:
+    enabled: true
+    frequency: weekly
+    time: "04:00"
+    timezone: "Asia/Tokyo"
+    
+    # 自動更新の対象
+    include:
+      - dependencies
+      - dev-dependencies
+    
+    # プルリクエストの設定
+    pull-request:
+      enabled: true
+      assignees:
+        - project-maintainer
+      labels:
+        - security
+        - dependencies
