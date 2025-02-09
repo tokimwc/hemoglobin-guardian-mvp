@@ -284,18 +284,6 @@ python -m pytest tests/integration/test_gemini_integration.py -v
 python -m pytest --cov=src tests/ --cov-report=term-missing
 ```
 
-### テストケース
-1. **Gemini API統合テスト**
-   - 低リスク時のアドバイス生成
-   - 高リスク時のアドバイス生成
-   - 警告付きのアドバイス生成
-   - レスポンス形式の検証
-   
-2. **テストカバレッジ**
-   - 目標: 80%以上
-   - 現在: 81%達成
-   - 未カバー: エラーハンドリング部分
-
 ## 開発者向け注意事項
 
 ### Gemini API利用時の注意点
