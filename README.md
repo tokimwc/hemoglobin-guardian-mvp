@@ -98,7 +98,9 @@ flutter build apk --release
 - 健康上の問題が疑われる場合は医師の診断を優先してください
 
 ## ライセンス
-MIT License
+[MIT License](LICENSE) - 医療免責事項付き
+
+本ソフトウェアは医療機器ではありません。詳細は[LICENSE](LICENSE)ファイルをご確認ください。
 
 ## コントリビューション
 Issue や Pull Requestを歓迎します。
@@ -260,9 +262,6 @@ hemoglobin-guardian-mvp/
 ## 注意・免責事項
 - 本アプリは貧血リスクの**参考情報**を提供するものであり、医療機器としての精度や認証はありません。  
 - 万一、健康上の問題が疑われる場合は医師の診断を優先してください。
-
-## ライセンス
-- [MIT License](LICENSE) (例)
 
 ## 貢献方法
 - Issue や Pull Requestを歓迎します。詳細は [CONTRIBUTING.md](CONTRIBUTING.md) を参照。
@@ -438,9 +437,6 @@ gcloud run deploy [SERVICE_NAME] \
 - 環境変数やAPIキーなどの機密情報は必ず`.env`ファイルで管理し、Gitにコミットしないでください
 - 本番環境へのデプロイ前に、セキュリティ設定を必ず確認してください
 - 大きな画像ファイルを扱う際は、メモリ使用量に注意してください
-
-## ライセンス
-このプロジェクトは非公開です。無断での使用・複製・配布は禁止されています。
 
 ## Docker開発環境
 
