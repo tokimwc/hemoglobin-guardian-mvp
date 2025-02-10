@@ -71,48 +71,70 @@ flutter pub get
 flutter run
 ```
 
-## テストの実行
+## テストの実行方法
 
-### バックエンドのテスト
+### バックエンドのテスト実行
 
-1. **テストデータの準備**
+1. **テスト環境のセットアップ**
 ```bash
-# テストデータ用のディレクトリ構造を作成
-cd backend/tests/data
-mkdir images
-
-# テスト用の画像を images ディレクトリに配置
-# 以下の命名規則に従ってください：
-# - healthy_nail.jpg  # 健康的な爪の画像
-# - medium_risk_nail.jpg  # やや貧血の可能性がある爪の画像
-# - high_risk_nail.jpg  # 貧血リスクが高い爪の画像
-
-# テストデータ（Base64エンコード）の生成
-python generate_test_data.py
-```
-
-2. **ユニットテストの実行**
-```bash
+# プロジェクトルートから
 cd backend
-python -m pytest tests/ -v
+python -m venv venv
+# Windowsの場合
+.\venv\Scripts\activate
+# macOS/Linuxの場合
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-3. **カバレッジレポートの生成**
+2. **単体テストの実行**
 ```bash
-python -m pytest tests/ --cov=src --cov-report=html
+# すべてのテストを実行（backendディレクトリから）
+python -m pytest tests/ -v
+
+# 特定のテストを実行
+python -m pytest tests/test_main.py -v
+python -m pytest tests/services/test_vision_service.py -v
+python -m pytest tests/services/test_gemini_service.py -v
+```
+
+3. **統合テストの実行**
+```bash
+# backendディレクトリから
+python -m pytest tests/integration/test_vision_gemini_integration.py -v
+```
+
+4. **カバレッジレポートの生成**
+```bash
+# backendディレクトリから
+python -m pytest --cov=src tests/ --cov-report=html
 # レポートは htmlcov/index.html で確認できます
 ```
 
-### フロントエンドのテスト
-
-1. **ウィジェットテスト**
+5. **パフォーマンステストの実行**
 ```bash
+# backendディレクトリから
+python -m pytest tests/performance/test_gemini_performance.py -v
+```
+
+### フロントエンドのテスト実行
+
+1. **テスト環境のセットアップ**
+```bash
+# プロジェクトルートから
 cd frontend
+flutter pub get
+```
+
+2. **ウィジェットテストの実行**
+```bash
+# frontendディレクトリから
 flutter test test/widget_test/
 ```
 
-2. **統合テスト**
+3. **統合テストの実行**
 ```bash
+# frontendディレクトリから
 flutter test integration_test/
 ```
 
@@ -130,10 +152,29 @@ flutter test integration_test/
    - 自動テストの再現性を確保
    - CI/CDパイプラインでの実行に最適化
 
-テストデータの更新手順：
-1. 新しいテスト画像を `images/` ディレクトリに追加
-2. `generate_test_data.py` を実行してJSONファイルを更新
-3. 両方のファイルをバージョン管理に含める
+### テスト実行時の注意点
+
+1. **環境変数の設定**
+   - テスト用の環境変数ファイル `.env.test` を `backend` ディレクトリに配置してください
+   - 必要な環境変数は以下の通りです：
+     ```env
+     GOOGLE_APPLICATION_CREDENTIALS=./tests/test_data/mock_firebase_credentials.json
+     VISION_AI_LOCATION=asia-northeast1
+     VERTEX_AI_LOCATION=us-central1
+     GEMINI_MODEL_ID=gemini-1.5-pro-test
+     ```
+
+2. **APIキーとサービスアカウント**
+   - テスト用のモックサービスアカウントJSONを `backend/tests/test_data/mock_firebase_credentials.json` に配置
+   - 本番の認証情報は決してGitにコミットしないでください
+
+3. **テストの並列実行**
+   - APIクォータ制限を考慮し、Vision AIとGemini APIのテストは逐次実行を推奨
+   - `-n auto` オプションは使用しないでください
+
+4. **テストのスキップ**
+   - 外部APIに依存するテストは `@pytest.mark.skip` でマークされています
+   - すべてのテストを実行する場合は `--run-marked-skip` オプションを使用
 
 ## 開発者向け情報
 
